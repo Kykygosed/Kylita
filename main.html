@@ -151,25 +151,8 @@
   const messagesRef = collection(db, "messages");
   const q = query(messagesRef, orderBy("timestamp", "asc"));
 
-  let pseudo = "Anonyme";
+  let pseudo = localStorage.getItem("pseudo") || "Anonyme";
 
-  // 🔐 Récupère le pseudo depuis la Realtime Database
-  const uid = localStorage.getItem("uid");
-
-  if (uid) {
-    const userRef = ref(rtdb, `users/${uid}/pseudo`);
-    get(userRef).then(snapshot => {
-      if (snapshot.exists()) {
-        pseudo = snapshot.val();
-      } else {
-        console.warn("Aucun pseudo trouvé pour cet UID.");
-      }
-    }).catch(error => {
-      console.error("Erreur lors de la récupération du pseudo :", error);
-    });
-  } else {
-    console.warn("Aucun UID dans localStorage.");
-  }
 
   // 🔥 Envoi de message
   sendBtn.addEventListener("click", async () => {
