@@ -129,15 +129,55 @@
   <!-- Formulaire -->
   <div class="login-container" id="loginForm">
     <h2>Connexion</h2>
-    <input type="text" placeholder="Pseudo">
-    <input type="password" placeholder="Mot de passe">
-    <button>Se connecter</button>
+<input type="text" id="pseudo" placeholder="Pseudo">
+<input type="password" id="password" placeholder="Mot de passe">
+<button id="loginBtn">Se connecter</button>
+
     <div class="register-link">
       Pas de compte ? <a href="register.html">S’inscrire</a>
     </div>
   </div>
 
-  <script>
+  <!-- Firebase SDKs -->
+<script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-auth.js"></script>
+
+<script>
+  const firebaseConfig = {
+    apiKey: "TA_CLE_API",
+    authDomain: "ton-projet.firebaseapp.com",
+    projectId: "ton-projet",
+    storageBucket: "ton-projet.appspot.com",
+    messagingSenderId: "xxxxxx",
+    appId: "xxxxx"
+  };
+
+  firebase.initializeApp(firebaseConfig);
+  const auth = firebase.auth();
+
+  document.getElementById('loginBtn').addEventListener('click', () => {
+    const pseudo = document.getElementById('pseudo').value.trim();
+    const password = document.getElementById('password').value;
+
+    if (!pseudo || !password) {
+      alert("Veuillez remplir tous les champs.");
+      return;
+    }
+
+    const email = `${pseudo}@kykychat.com`; // Forme d'email fictif
+
+    auth.signInWithEmailAndPassword(email, password)
+      .then(() => {
+        console.log("Connexion réussie !");
+        window.location.href = "main.html";
+      })
+      .catch(error => {
+        console.error("Erreur de connexion :", error.message);
+        alert("Pseudo ou mot de passe incorrect.");
+      });
+  });
+
+
     if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('./service-worker.js')
       .then(() => console.log('Service Worker enregistré !'))
