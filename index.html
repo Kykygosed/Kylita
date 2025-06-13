@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <title>Connexion</title>
-<link rel="manifest" href="/manifest.json">
+<link rel="manifest" href="./manifest.json">
 <link rel="icon" href="/icons/icon-192.png">
 <meta name="theme-color" content="#000000">
 
@@ -139,7 +139,7 @@
 
   <script>
     if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/service-worker.js')
+    navigator.serviceWorker.register('./service-worker.js')
       .then(() => console.log('Service Worker enregistré !'))
       .catch(err => console.error('Erreur SW:', err));
   }
