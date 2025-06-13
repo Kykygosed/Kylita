@@ -3,10 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <title>Connexion</title>
-<link rel="manifest" href="./manifest.json">
-<link rel="icon" href="/icons/icon-192.png">
-<meta name="theme-color" content="#000000">
-
+  <link rel="manifest" href="./manifest.json">
+  <link rel="icon" href="/icons/icon-192.png">
+  <meta name="theme-color" content="#000000">
   <style>
     * {
       box-sizing: border-box;
@@ -22,7 +21,6 @@
       overflow: hidden;
     }
 
-    /* Animation de chargement */
     #loader {
       position: fixed;
       top: 0;
@@ -49,9 +47,8 @@
       to { transform: rotate(360deg); }
     }
 
-    /* Formulaire */
     .login-container {
-      display: none; /* Caché avant fin chargement */
+      display: none;
       position: absolute;
       top: 50%;
       left: 50%;
@@ -129,69 +126,68 @@
   <!-- Formulaire -->
   <div class="login-container" id="loginForm">
     <h2>Connexion</h2>
-<input type="text" id="pseudo" placeholder="Pseudo">
-<input type="password" id="password" placeholder="Mot de passe">
-<button id="loginBtn">Se connecter</button>
-
+    <input type="text" id="pseudo" placeholder="Pseudo">
+    <input type="password" id="password" placeholder="Mot de passe">
+    <button id="loginBtn">Se connecter</button>
     <div class="register-link">
       Pas de compte ? <a href="register.html">S’inscrire</a>
     </div>
   </div>
 
-  <!-- Firebase SDKs -->
-<script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-app.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-auth.js"></script>
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-auth.js"></script>
 
-<script>// For Firebase JS SDK v7.20.0 and later, measurementId is optional
-const firebaseConfig = {
-  apiKey: "AIzaSyDyWu4TI4PIRXfeb7yqt0WIGClgu10IjkM",
-  authDomain: "kylita-f2923.firebaseapp.com",
-  databaseURL: "https://kylita-f2923-default-rtdb.firebaseio.com",
-  projectId: "kylita-f2923",
-  storageBucket: "kylita-f2923.firebasestorage.app",
-  messagingSenderId: "431823530994",
-  appId: "1:431823530994:web:88a07e633751686e5ad96b",
-  measurementId: "G-F4LLNWQJ16"
-};
+  <script>
+    // Configuration Firebase
+    const firebaseConfig = {
+      apiKey: "TA_CLE_API",
+      authDomain: "ton-projet.firebaseapp.com",
+      projectId: "ton-projet",
+      storageBucket: "ton-projet.appspot.com",
+      messagingSenderId: "TON_SENDER_ID",
+      appId: "TON_APP_ID"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const auth = firebase.auth();
 
-  firebase.initializeApp(firebaseConfig);
-  const auth = firebase.auth();
-
-  document.getElementById('loginBtn').addEventListener('click', () => {
-    const pseudo = document.getElementById('pseudo').value.trim();
-    const password = document.getElementById('password').value;
-
-    if (!pseudo || !password) {
-      alert("Veuillez remplir tous les champs.");
-      return;
-    }
-
-    const email = `${pseudo}@kykychat.com`; // Forme d'email fictif
-
-    auth.signInWithEmailAndPassword(email, password)
-      .then(() => {
-        console.log("Connexion réussie !");
-        window.location.href = "main.html";
-      })
-      .catch(error => {
-        console.error("Erreur de connexion :", error.message);
-        alert("Pseudo ou mot de passe incorrect.");
-      });
-  });
-
-
-    if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./service-worker.js')
-      .then(() => console.log('Service Worker enregistré !'))
-      .catch(err => console.error('Erreur SW:', err));
-  }
-    // Simule un temps de chargement avant d’afficher le formulaire
+    // Affiche le formulaire après chargement
     window.addEventListener("load", () => {
       setTimeout(() => {
         document.getElementById("loader").style.display = "none";
         document.getElementById("loginForm").style.display = "block";
-      }, 1500); // 1.5 seconde
+      }, 1500);
     });
+
+    // Connexion
+    document.getElementById('loginBtn').addEventListener('click', () => {
+      const pseudo = document.getElementById('pseudo').value.trim();
+      const password = document.getElementById('password').value;
+
+      if (!pseudo || !password) {
+        alert("Veuillez remplir tous les champs.");
+        return;
+      }
+
+      const email = `${pseudo}@kykychat.com`;
+
+      auth.signInWithEmailAndPassword(email, password)
+        .then(() => {
+          console.log("Connexion réussie !");
+          window.location.href = "main.html";
+        })
+        .catch(error => {
+          console.error("Erreur de connexion :", error.message);
+          alert("Pseudo ou mot de passe incorrect.");
+        });
+    });
+
+    // Enregistre le service worker (facultatif)
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('./service-worker.js')
+        .then(() => console.log('Service Worker enregistré !'))
+        .catch(err => console.error('Erreur SW:', err));
+    }
   </script>
 
 </body>
