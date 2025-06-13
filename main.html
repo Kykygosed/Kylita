@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Chat temps réel</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      height: 100%;
+      font-family: 'Segoe UI', sans-serif;
+      background: url('https://images.unsplash.com/photo-1506744038136-46273834b3fb') no-repeat center center fixed;
+      background-size: cover;
+      overflow: hidden;
+    }
+
+    #loader {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background: rgba(0,0,0,0.7);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 9999;
+    }
+    .spinner {
+      border: 8px solid rgba(255,255,255,0.2);
+      border-top: 8px solid white;
+      border-radius: 50%;
+      width: 80px; height: 80px;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    #chat-container {
+      position: absolute;
+      top: 0; left: 0;
+      width: 60%;
+      height: 100%;
+      padding: 20px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+    }
+
+    .message {
+      background: rgba(255,255,255,0.1);
+      backdrop-filter: blur(8px);
+      border-radius: 15px;
+      padding: 10px 15px;
+      color: white;
+      width: fit-content;
+      max-width: 90%;
+    }
+
+    .author {
+      font-size: 0.9em;
+      margin-bottom: 4px;
+      color: gray;
+    }
+
+    .author.kykygosed {
+      color: red;
+    }
+
+    .text {
+      font-size: 1.1em;
+      margin-bottom: 5px;
+    }
+
+    .date {
+      font-size: 0.8em;
+      color: #ccc;
+      text-align: right;
+    }
+
+    #input-bar {
+      position: absolute;
+      bottom: 20px;
+      left: 20px;
+      width: 55%;
+      display: flex;
+      align-items: center;
+      background: rgba(255,255,255,0.1);
+      backdrop-filter: blur(8px);
+      border-radius: 15px;
+      padding: 10px 15px;
+    }
+
+    #messageInput {
+      flex: 1;
+      border: none;
+      outline: none;
+      background: transparent;
+      color: white;
+      font-size: 1.1em;
+    }
+
+    #sendBtn {
+      background: none;
+      border: none;
+      color: white;
+      cursor: pointer;
+      font-size: 1.5em;
+      margin-left: 10px;
+    }
+
+    ::placeholder {
+      color: #ccc;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="loader">
+    <div class="spinner"></div>
+  </div>
+
+  <div id="chat-container"></div>
+
+  <div id="input-bar">
+    <input type="text" id="messageInput" placeholder="Votre message...">
+    <button id="sendBtn">✉️</button>
+  </div>
+
+  <script type="module">
+    // 🔥 Import Firebase modules
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-app.js";
+    import { getFirestore, collection, addDoc, onSnapshot, serverTimestamp, query, orderBy } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js";
+
+    // 🔧 Config à adapter
+    const firebaseConfig = {
+      apiKey: "TON_API_KEY",
+      authDomain: "TON_PROJET.firebaseapp.com",
+      projectId: "TON_PROJET",
+      storageBucket: "TON_PROJET.appspot.com",
+      messagingSenderId: "TON_SENDER_ID",
+      appId: "TON_APP_ID"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    // Pseudo de l'utilisateur
+    const pseudo = localStorage.getItem("pseudo") || prompt("Entrez votre pseudo:");
+
+    // 🔥 Référence collection
+    const messagesRef = collection(db, "messages");
+    const q = query(messagesRef, orderBy("timestamp", "asc"));
+
+    const chatContainer = document.getElementById("chat-container");
+
+    // 🧪 Ajout de message
+    document.getElementById("sendBtn").addEventListener("click", async () => {
+      const input = document.getElementById("messageInput");
+      const msg = input.value.trim();
+      if (msg === "") return;
+
+      await addDoc(messagesRef, {
+        author: pseudo,
+        text: msg,
+        timestamp: serverTimestamp()
+      });
+
+      input.value = "";
+    });
+
+    // 🔁 Affichage en temps réel
+    onSnapshot(q, snapshot => {
+      chatContainer.innerHTML = ""; // vide pour éviter doublons
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        const div = document.createElement("div");
+        div.className = "message";
+
+        const authorClass = data.author.toLowerCase() === "kykygosed" ? "author kykygosed" : "author";
+        const date = data.timestamp?.toDate().toLocaleString("fr-FR") ?? "(non daté)";
+
+        div.innerHTML = `
+          <div class="${authorClass}">${data.author}</div>
+          <div class="text">${data.text}</div>
+          <div class="date">${date}</div>
+        `;
+        chatContainer.appendChild(div);
+      });
+
+      // Scroll auto vers le bas
+      chatContainer.scrollTop = chatContainer.scrollHeight;
+    });
+
+    // ✅ Masque le loader après chargement
+    window.addEventListener("load", () => {
+      setTimeout(() => {
+        document.getElementById("loader").style.display = "none";
+      }, 1500);
+    });
+  </script>
+</body>
+</html>
