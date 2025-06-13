@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Inscription</title>
+<link rel="manifest" href="./manifest.json">
+<link rel="icon" href="/icons/icon-192.png">
+<meta name="theme-color" content="#000000">
+
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body, html {
+      height: 100%;
+      font-family: 'Segoe UI', sans-serif;
+      background: url('https://images.unsplash.com/photo-1506744038136-46273834b3fb') no-repeat center center fixed;
+      background-size: cover;
+      overflow: hidden;
+    }
+
+    /* Animation de chargement */
+    #loader {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.7);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 9999;
+    }
+
+    .spinner {
+      border: 8px solid rgba(255,255,255,0.2);
+      border-top: 8px solid white;
+      border-radius: 50%;
+      width: 80px;
+      height: 80px;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* Formulaire */
+    .login-container {
+      display: none; /* Caché avant fin chargement */
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(10px);
+      padding: 40px;
+      border-radius: 20px;
+      box-shadow: 0 0 20px rgba(0,0,0,0.3);
+      text-align: center;
+      width: 90%;
+      max-width: 400px;
+    }
+
+    .login-container h2 {
+      color: white;
+      margin-bottom: 30px;
+    }
+
+    .login-container input {
+      width: 100%;
+      padding: 15px;
+      margin: 15px 0;
+      border: none;
+      border-radius: 10px;
+      font-size: 1.2em;
+      outline: none;
+    }
+
+    .login-container input::placeholder {
+      color: #888;
+    }
+
+    .login-container button {
+      width: 100%;
+      padding: 15px;
+      font-size: 1.2em;
+      border: none;
+      border-radius: 10px;
+      color: white;
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(8px);
+      cursor: pointer;
+      transition: 0.3s;
+    }
+
+    .login-container button:hover {
+      background: rgba(255, 255, 255, 0.2);
+    }
+
+    .login-container .register-link {
+      margin-top: 20px;
+      color: white;
+      font-size: 1em;
+    }
+
+    .login-container .register-link a {
+      color: #00ccff;
+      text-decoration: none;
+      font-weight: bold;
+    }
+
+    .login-container .register-link a:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Loader -->
+  <div id="loader">
+    <div class="spinner"></div>
+  </div>
+
+  <!-- Formulaire -->
+  <div class="login-container" id="loginForm">
+    <h2>Inscription</h2>
+    <input type="text" placeholder="Pseudo">
+    <input type="password" placeholder="Mot de passe">
+    <button>S'inscrire</button>
+    <div class="register-link">
+      Déja un compte? <a href="index.html">Se connecter</a>
+    </div>
+  </div>
+
+  <script>
+    if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('./service-worker.js')
+      .then(() => console.log('Service Worker enregistré !'))
+      .catch(err => console.error('Erreur SW:', err));
+  }
+    // Simule un temps de chargement avant d’afficher le formulaire
+    window.addEventListener("load", () => {
+      setTimeout(() => {
+        document.getElementById("loader").style.display = "none";
+        document.getElementById("loginForm").style.display = "block";
+      }, 1500); // 1.5 seconde
+    });
+  </script>
+
+</body>
+</html>
