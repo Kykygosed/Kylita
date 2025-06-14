@@ -114,282 +114,373 @@
 
   <script>
     // Config Firebase — remplace par la tienne
-    const firebaseConfig = {
-      apiKey: "AIzaSyDyWu4TI4PIRXfeb7yqt0WIGClgu10IjkM",
-      authDomain: "kylita-f2923.firebaseapp.com",
-      databaseURL: "https://kylita-f2923-default-rtdb.firebaseio.com",
-      projectId: "kylita-f2923",
-      storageBucket: "kylita-f2923.appspot.com",
-      messagingSenderId: "431823530994",
-      appId: "1:431823530994:web:88a07e633751686e5ad96b"
-    };
-    firebase.initializeApp(firebaseConfig);
-    const db = firebase.database();
+    // Config Firebase — remplace par la tienne
+const firebaseConfig = {
+  apiKey: "AIzaSyDyWu4TI4PIRXfeb7yqt0WIGClgu10IjkM",
+  authDomain: "kylita-f2923.firebaseapp.com",
+  databaseURL: "https://kylita-f2923-default-rtdb.firebaseio.com",
+  projectId: "kylita-f2923",
+  storageBucket: "kylita-f2923.appspot.com",
+  messagingSenderId: "431823530994",
+  appId: "1:431823530994:web:88a07e633751686e5ad96b"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
 
-    // Variables globales
-    let localStream = null;
-    let audioContext = null;
-    let analyser = null;
-    let dataArray = null;
-    let incomingAudioContext = null;
-    let incomingAnalyser = null;
-    let incomingDataArray = null;
+// Variables globales
+let localStream = null;
+let audioContext = null;
+let analyser = null;
+let dataArray = null;
+let incomingAudioContext = null;
+let incomingAnalyser = null;
+let incomingDataArray = null;
 
-    const peers = {};
-    const configuration = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
-    let micEnabled = false;
-    let pseudo = localStorage.getItem("pseudo") || "Anonyme";
-    let currentFrequency = null;
+const peers = {}; // Clé : pseudo de l’autre, valeur : objet RTCPeerConnection
+const remoteAudios = {}; // Pour stocker les éléments <audio> liés à chaque peer
+const configuration = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
+let micEnabled = false;
+let pseudo = localStorage.getItem("pseudo") || ("User" + Math.floor(Math.random()*10000));
+let currentFrequency = null;
 
-    // Format automatique XXX.XXX
-    function formatFrequency(input) {
-      let v = input.value.replace(/\D/g, "");
-      if (v.length > 3) v = v.slice(0, 3) + "." + v.slice(3, 6);
-      input.value = v;
-    }
+// Format automatique XXX.XXX
+function formatFrequency(input) {
+  let v = input.value.replace(/\D/g, "");
+  if (v.length > 3) v = v.slice(0, 3) + "." + v.slice(3, 6);
+  input.value = v;
+}
 
-    // Lister les périphériques audio
-    async function listAudioDevices() {
-      try {
-        const devices = await navigator.mediaDevices.enumerateDevices();
-        const ins = document.getElementById("inputSelect");
-        const outs = document.getElementById("outputSelect");
-        ins.innerHTML = "";
-        outs.innerHTML = "";
-        devices.forEach(d => {
-          if (d.kind === "audioinput") {
-            const opt = document.createElement("option");
-            opt.value = d.deviceId;
-            opt.text = d.label || "Microphone";
-            ins.appendChild(opt);
-          } else if (d.kind === "audiooutput") {
-            const opt = document.createElement("option");
-            opt.value = d.deviceId;
-            opt.text = d.label || "Haut-parleur";
-            outs.appendChild(opt);
-          }
-        });
-      } catch (e) {
-        alert("Erreur lors de la récupération des périphériques audio: " + e.message);
-      }
-    }
-
-    // Init micro + analyser de volume
-    async function initMicrophone() {
-      if (localStream) {
-        localStream.getTracks().forEach(t => t.stop());
-      }
-      const inId = document.getElementById("inputSelect").value || undefined;
-      try {
-        localStream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: inId ? { exact: inId } : undefined } });
-        if (!audioContext || audioContext.state === "closed") {
-          audioContext = new AudioContext();
-        }
-        const src = audioContext.createMediaStreamSource(localStream);
-        analyser = audioContext.createAnalyser();
-        analyser.fftSize = 256;
-        src.connect(analyser);
-        dataArray = new Uint8Array(analyser.frequencyBinCount);
-        updateVolumeBar();
-      } catch (e) {
-        alert("Erreur accès micro: " + e.message);
-      }
-    }
-
-    // Mise à jour barre volume micro
-    function updateVolumeBar() {
-      if (!analyser || !dataArray) return;
-      analyser.getByteFrequencyData(dataArray);
-      const avg = dataArray.reduce((a, b) => a + b, 0) / dataArray.length;
-      document.getElementById("volumeBar").style.height = Math.min(100, (avg / 255) * 100) + "%";
-      if (micEnabled) {
-        requestAnimationFrame(updateVolumeBar);
-      } else {
-        document.getElementById("volumeBar").style.height = "0%";
-      }
-    }
-
-    // Suivi volume audio entrant
-    function monitorIncomingAudio(stream) {
-      if (incomingAudioContext) {
-        incomingAudioContext.close();
-      }
-      incomingAudioContext = new AudioContext();
-      const src = incomingAudioContext.createMediaStreamSource(stream);
-      incomingAnalyser = incomingAudioContext.createAnalyser();
-      incomingAnalyser.fftSize = 256;
-      src.connect(incomingAnalyser);
-      incomingDataArray = new Uint8Array(incomingAnalyser.frequencyBinCount);
-      (function draw() {
-        if (!incomingAnalyser || !incomingDataArray) return;
-        incomingAnalyser.getByteFrequencyData(incomingDataArray);
-        const avg = incomingDataArray.reduce((a, b) => a + b, 0) / incomingDataArray.length;
-        document.getElementById("incomingBar").style.height = Math.min(100, (avg / 255) * 100) + "%";
-        requestAnimationFrame(draw);
-      })();
-    }
-
-    // Activer / désactiver micro
-    async function toggleMicro() {
-      if (!localStream) {
-        await initMicrophone();
-      }
-      micEnabled = !micEnabled;
-      localStream.getAudioTracks().forEach(t => t.enabled = micEnabled);
-      document.getElementById("micStatus").textContent = micEnabled ? "ON" : "OFF";
-      document.getElementById("micIcon").textContent = micEnabled ? "🎙️" : "🎤";
-
-      if (micEnabled) updateVolumeBar();
-    }
-
-    // Création d'une connexion WebRTC pour une fréquence donnée
-    async function createConnection(freq) {
-      if (!localStream) {
-        alert("Micro non initialisé");
-        return;
-      }
-
-      currentFrequency = freq.replace(".", "_");
-      const freqRef = db.ref("calls/" + currentFrequency);
-
-      // Supprime les anciens listeners sur cette fréquence
-      freqRef.off();
-
-      // Créer PeerConnection et ajouter localStream
-      const pc = new RTCPeerConnection(configuration);
-      localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
-
-      pc.onicecandidate = event => {
-        if (event.candidate) {
-          freqRef.child("candidates/" + pseudo).push(event.candidate.toJSON());
-        }
-      };
-
-      pc.ontrack = event => {
-        const remoteStream = event.streams[0];
-        const audio = new Audio();
-        audio.srcObject = remoteStream;
-        audio.autoplay = true;
-        audio.volume = 1.0;
-        document.body.appendChild(audio);
-
-        monitorIncomingAudio(remoteStream);
-      };
-
-      // Gestion des candidats entrants
-      freqRef.child("candidates").on("child_added", snap => {
-        const fromUser = snap.key;
-        if (fromUser === pseudo) return;
-        snap.ref.on("child_added", async cSnap => {
-          const candidate = new RTCIceCandidate(cSnap.val());
-          try {
-            await pc.addIceCandidate(candidate);
-          } catch(e) {
-            console.warn("Erreur ajout ICE candidate", e);
-          }
-        });
-      });
-
-      // Gérer l'arrivée d'une offre (offer)
-      freqRef.child("offer").on("value", async snap => {
-        const offer = snap.val();
-        if (!offer || offer.from === pseudo) return;
-        try {
-          await pc.setRemoteDescription(new RTCSessionDescription(offer));
-          const answer = await pc.createAnswer();
-          await pc.setLocalDescription(answer);
-          freqRef.child("answer").set({ type: answer.type, sdp: answer.sdp, from: pseudo });
-        } catch (e) {
-          console.error("Erreur gestion offer", e);
-        }
-      });
-
-      // Gérer l'arrivée d'une réponse (answer)
-      freqRef.child("answer").on("value", async snap => {
-        const answer = snap.val();
-        if (!answer || answer.from === pseudo) return;
-        try {
-          await pc.setRemoteDescription(new RTCSessionDescription(answer));
-        } catch (e) {
-          console.error("Erreur gestion answer", e);
-        }
-      });
-
-      // Créer une offre et l’envoyer
-      async function makeOffer() {
-        try {
-          const offer = await pc.createOffer();
-          await pc.setLocalDescription(offer);
-          freqRef.child("offer").set({ type: offer.type, sdp: offer.sdp, from: pseudo });
-        } catch (e) {
-          console.error("Erreur création offre", e);
-        }
-      }
-
-      // Écoute la présence d'autres utilisateurs
-      freqRef.child("offer").once("value", snap => {
-        if (!snap.exists() || snap.val().from === pseudo) {
-          makeOffer();
-        }
-      });
-
-      peers[pseudo] = pc;
-    }
-
-    // Rejoindre une fréquence radio
-    async function joinFrequency() {
-      const freq = document.getElementById("frequencyBox").value;
-      if (!/^\d{3}\.\d{3}$/.test(freq)) {
-        alert("Fréquence invalide (format attendu 000.000)");
-        return;
-      }
-      await initMicrophone();
-
-      currentFrequency = freq.replace(".", "_");
-      const freqUsersRef = db.ref(`frequences/${currentFrequency}/${pseudo}`);
-      freqUsersRef.set({ joinedAt: Date.now() });
-      window.addEventListener("beforeunload", () => {
-        freqUsersRef.remove();
-      });
-
-      createConnection(freq);
-    }
-
-    // Gestion du changement de périphérique entrée
-    document.getElementById("inputSelect").addEventListener("change", async () => {
-      await initMicrophone();
-      if (micEnabled) {
-        localStream.getAudioTracks().forEach(t => t.enabled = true);
-        updateVolumeBar();
+// Lister les périphériques audio
+async function listAudioDevices() {
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const ins = document.getElementById("inputSelect");
+    const outs = document.getElementById("outputSelect");
+    ins.innerHTML = "";
+    outs.innerHTML = "";
+    devices.forEach(d => {
+      if (d.kind === "audioinput") {
+        const opt = document.createElement("option");
+        opt.value = d.deviceId;
+        opt.text = d.label || "Microphone";
+        ins.appendChild(opt);
+      } else if (d.kind === "audiooutput") {
+        const opt = document.createElement("option");
+        opt.value = d.deviceId;
+        opt.text = d.label || "Haut-parleur";
+        outs.appendChild(opt);
       }
     });
+  } catch (e) {
+    alert("Erreur lors de la récupération des périphériques audio: " + e.message);
+  }
+}
 
-    // Gestion du changement de périphérique sortie (audio)
-    document.getElementById("outputSelect").addEventListener("change", () => {
-      const audioElements = document.querySelectorAll("audio");
-      const outId = document.getElementById("outputSelect").value;
-      audioElements.forEach(audio => {
-        if (typeof audio.setSinkId === "function") {
-          audio.setSinkId(outId).catch(e => console.warn("Erreur setSinkId", e));
-        }
-      });
+// Init micro + analyser de volume
+async function initMicrophone() {
+  if (localStream) {
+    localStream.getTracks().forEach(t => t.stop());
+  }
+  const inId = document.getElementById("inputSelect").value || undefined;
+  try {
+    localStream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: inId ? { exact: inId } : undefined } });
+    if (!audioContext || audioContext.state === "closed") {
+      audioContext = new AudioContext();
+    }
+    const src = audioContext.createMediaStreamSource(localStream);
+    analyser = audioContext.createAnalyser();
+    analyser.fftSize = 256;
+    src.connect(analyser);
+    dataArray = new Uint8Array(analyser.frequencyBinCount);
+    updateVolumeBar();
+  } catch (e) {
+    alert("Erreur accès micro: " + e.message);
+  }
+}
+
+// Mise à jour barre volume micro
+function updateVolumeBar() {
+  if (!analyser || !dataArray) return;
+  analyser.getByteFrequencyData(dataArray);
+  const avg = dataArray.reduce((a, b) => a + b, 0) / dataArray.length;
+  document.getElementById("volumeBar").style.height = Math.min(100, (avg / 255) * 100) + "%";
+  if (micEnabled) {
+    requestAnimationFrame(updateVolumeBar);
+  } else {
+    document.getElementById("volumeBar").style.height = "0%";
+  }
+}
+
+// Suivi volume audio entrant
+function monitorIncomingAudio(stream) {
+  if (incomingAudioContext) {
+    incomingAudioContext.close();
+  }
+  incomingAudioContext = new AudioContext();
+  const src = incomingAudioContext.createMediaStreamSource(stream);
+  incomingAnalyser = incomingAudioContext.createAnalyser();
+  incomingAnalyser.fftSize = 256;
+  src.connect(incomingAnalyser);
+  incomingDataArray = new Uint8Array(incomingAnalyser.frequencyBinCount);
+  (function draw() {
+    if (!incomingAnalyser || !incomingDataArray) return;
+    incomingAnalyser.getByteFrequencyData(incomingDataArray);
+    const avg = incomingDataArray.reduce((a, b) => a + b, 0) / incomingDataArray.length;
+    document.getElementById("incomingBar").style.height = Math.min(100, (avg / 255) * 100) + "%";
+    requestAnimationFrame(draw);
+  })();
+}
+
+// Activer / désactiver micro
+async function toggleMicro() {
+  if (!localStream) {
+    await initMicrophone();
+  }
+  micEnabled = !micEnabled;
+  localStream.getAudioTracks().forEach(t => t.enabled = micEnabled);
+  document.getElementById("micStatus").textContent = micEnabled ? "ON" : "OFF";
+  document.getElementById("micIcon").textContent = micEnabled ? "🎙️" : "🎤";
+
+  if (micEnabled) updateVolumeBar();
+}
+
+// Nettoyer une connexion peer
+function cleanPeer(peerId) {
+  if (peers[peerId]) {
+    peers[peerId].close();
+    delete peers[peerId];
+  }
+  if (remoteAudios[peerId]) {
+    remoteAudios[peerId].pause();
+    remoteAudios[peerId].srcObject = null;
+    remoteAudios[peerId].remove();
+    delete remoteAudios[peerId];
+  }
+}
+
+// Créer une connexion WebRTC avec un peer donné (autre utilisateur)
+async function createPeerConnection(peerId, isOfferer, freqRef) {
+  if (peerId === pseudo) return null; // Ne pas se connecter à soi-même
+
+  if (peers[peerId]) {
+    cleanPeer(peerId);
+  }
+
+  const pc = new RTCPeerConnection(configuration);
+  peers[peerId] = pc;
+
+  // Ajouter nos pistes audio
+  if (localStream) {
+    localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+  }
+
+  pc.onicecandidate = event => {
+    if (event.candidate) {
+      freqRef.child("candidates").child(peerId).child(pseudo).push(event.candidate.toJSON());
+    }
+  };
+
+  pc.ontrack = event => {
+    const remoteStream = event.streams[0];
+    if (!remoteAudios[peerId]) {
+      const audio = new Audio();
+      audio.autoplay = true;
+      audio.srcObject = remoteStream;
+      document.body.appendChild(audio);
+      remoteAudios[peerId] = audio;
+
+      // On peut monitorer le volume entrant pour l’un des streams si on veut
+      monitorIncomingAudio(remoteStream);
+    }
+  };
+
+  // Recevoir candidats ICE envoyés par ce peer
+  freqRef.child("candidates").child(pseudo).child(peerId).on("child_added", async snap => {
+    const candidate = new RTCIceCandidate(snap.val());
+    try {
+      await pc.addIceCandidate(candidate);
+    } catch(e) {
+      console.warn("Erreur ajout ICE candidate", e);
+    }
+  });
+
+  if (isOfferer) {
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    freqRef.child("offers").child(pseudo).set({
+      type: offer.type,
+      sdp: offer.sdp,
+      from: pseudo,
+      to: peerId
     });
+  }
 
-    // Événements boutons
-    document.getElementById("joinBtn").addEventListener("click", joinFrequency);
-    document.getElementById("microToggle").addEventListener("click", toggleMicro);
+  // Écoute réponse si on est offerer
+  freqRef.child("answers").child(peerId).child(pseudo).on("value", async snap => {
+    const answer = snap.val();
+    if (!answer) return;
+    try {
+      await pc.setRemoteDescription(new RTCSessionDescription(answer));
+    } catch (e) {
+      console.error("Erreur setRemoteDescription answer", e);
+    }
+  });
 
-    // Initialisation au chargement
-    window.onload = async () => {
-      await listAudioDevices();
-      // Si on a un micro par défaut, sélectionne-le
-      if (document.getElementById("inputSelect").options.length) {
-        document.getElementById("inputSelect").selectedIndex = 0;
+  return pc;
+}
+
+// Gérer la réception d'une offre
+async function handleOffer(offer, freqRef) {
+  if (offer.to !== pseudo) return; // Offre pas pour moi
+
+  const fromUser = offer.from;
+
+  // Nettoyer si déjà existant
+  if (peers[fromUser]) {
+    cleanPeer(fromUser);
+  }
+
+  const pc = new RTCPeerConnection(configuration);
+  peers[fromUser] = pc;
+
+  if (localStream) {
+    localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+  }
+
+  pc.onicecandidate = event => {
+    if (event.candidate) {
+      freqRef.child("candidates").child(fromUser).child(pseudo).push(event.candidate.toJSON());
+    }
+  };
+
+  pc.ontrack = event => {
+    const remoteStream = event.streams[0];
+    if (!remoteAudios[fromUser]) {
+      const audio = new Audio();
+      audio.autoplay = true;
+      audio.srcObject = remoteStream;
+      document.body.appendChild(audio);
+      remoteAudios[fromUser] = audio;
+      monitorIncomingAudio(remoteStream);
+    }
+  };
+
+  // Recevoir candidats ICE envoyés par ce peer
+  freqRef.child("candidates").child(pseudo).child(fromUser).on("child_added", async snap => {
+    const candidate = new RTCIceCandidate(snap.val());
+    try {
+      await pc.addIceCandidate(candidate);
+    } catch (e) {
+      console.warn("Erreur ajout ICE candidate", e);
+    }
+  });
+
+  try {
+    await pc.setRemoteDescription(new RTCSessionDescription(offer));
+    const answer = await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+    freqRef.child("answers").child(pseudo).child(fromUser).set({
+      type: answer.type,
+      sdp: answer.sdp,
+      from: pseudo,
+      to: fromUser
+    });
+  } catch (e) {
+    console.error("Erreur gestion offre", e);
+  }
+}
+
+// Nettoyer toutes les connexions
+function cleanAllPeers() {
+  Object.keys(peers).forEach(peerId => cleanPeer(peerId));
+}
+
+// Se connecter à une fréquence
+async function connectToFrequency(freq) {
+  if (currentFrequency === freq) return;
+
+  // Nettoyer connexions précédentes
+  cleanAllPeers();
+
+  currentFrequency = freq;
+  document.getElementById("freqValue").textContent = freq;
+
+  const freqRef = db.ref("frequencies/" + freq.replace(".", "_"));
+
+  // Signaler qu’on est connecté
+  await freqRef.child("users").child(pseudo).set(true);
+  freqRef.child("users").child(pseudo).onDisconnect().remove();
+
+  // Surveiller les utilisateurs présents
+  freqRef.child("users").on("value", async snapshot => {
+    const users = snapshot.val() || {};
+    // Établir connexions avec tous sauf soi
+    for (const user of Object.keys(users)) {
+      if (user !== pseudo && !peers[user]) {
+        // Créer offre vers ce peer
+        await createPeerConnection(user, true, freqRef);
       }
-      if (document.getElementById("outputSelect").options.length) {
-        document.getElementById("outputSelect").selectedIndex = 0;
-      }
-    };
+    }
+  });
+
+  // Surveiller les offres reçues
+  freqRef.child("offers").on("child_added", snap => {
+    const offer = snap.val();
+    if (offer.to === pseudo) {
+      handleOffer(offer, freqRef);
+    }
+  });
+
+  // Nettoyer offres et réponses après traitement
+  freqRef.child("offers").child(pseudo).remove();
+  freqRef.child("answers").child(pseudo).remove();
+  freqRef.child("candidates").child(pseudo).remove();
+}
+
+// Quitter fréquence (ex: bouton Quitter)
+function leaveFrequency() {
+  if (!currentFrequency) return;
+  const freqRef = db.ref("frequencies/" + currentFrequency.replace(".", "_"));
+  freqRef.child("users").child(pseudo).remove();
+  cleanAllPeers();
+  currentFrequency = null;
+  document.getElementById("freqValue").textContent = "Aucune";
+}
+
+// Au chargement de la page
+window.addEventListener("load", async () => {
+  await listAudioDevices();
+  await initMicrophone();
+  toggleMicro();
+
+  // Formattage fréquence
+  document.getElementById("freqInput").addEventListener("input", e => formatFrequency(e.target));
+
+  // Bouton rejoindre fréquence
+  document.getElementById("joinFreqBtn").addEventListener("click", async () => {
+    const freq = document.getElementById("freqInput").value;
+    if (!freq.match(/^\d{3}\.\d{3}$/)) {
+      alert("Format fréquence invalide. Exemple : 122.500");
+      return;
+    }
+    await connectToFrequency(freq);
+  });
+
+  // Bouton quitter
+  document.getElementById("leaveFreqBtn").addEventListener("click", leaveFrequency);
+
+  // Changement périphérique micro
+  document.getElementById("inputSelect").addEventListener("change", async () => {
+    await initMicrophone();
+    if (micEnabled) {
+      localStream.getAudioTracks().forEach(t => t.enabled = true);
+    }
+  });
+
+  // Bouton micro on/off
+  document.getElementById("micToggleBtn").addEventListener("click", toggleMicro);
+});
+
   </script>
 </body>
 </html>
