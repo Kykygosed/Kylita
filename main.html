@@ -3,70 +3,29 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Chat vocal fréquence</title>
+<title>Voice chat par fréquence - WebRTC + Firebase</title>
 <style>
-  body {
-    font-family: Arial, sans-serif;
-    background: #121212;
-    color: #eee;
-    margin: 0; padding: 0;
-    display: flex; flex-direction: column; align-items: center;
-    height: 100vh;
-    justify-content: center;
-  }
-  #login, #call {
-    background: #222;
-    padding: 20px;
-    border-radius: 8px;
-    width: 320px;
-    text-align: center;
-  }
-  input, select, button {
-    width: 100%;
-    margin: 8px 0;
-    padding: 10px;
-    border-radius: 5px;
-    border: none;
-    font-size: 16px;
-  }
-  button {
-    background: #3b82f6;
-    color: white;
-    cursor: pointer;
-  }
-  button:disabled {
-    background: #555;
-    cursor: not-allowed;
-  }
-  audio {
-    margin-top: 20px;
-    width: 100%;
-  }
+  body { font-family: Arial, sans-serif; margin: 20px; background: #222; color: #eee; }
+  input, button { font-size: 1em; padding: 8px; margin: 5px; }
+  #log { background: #111; height: 150px; overflow-y: auto; padding: 10px; margin-top: 10px; border-radius: 5px; }
 </style>
 </head>
 <body>
 
-<div id="login">
-  <h2>Rejoindre une fréquence</h2>
-  <input type="text" id="freqInput" placeholder="Ex: 12380 (sans point)" />
-  <select id="inputSelect"></select>
-  <select id="outputSelect"></select>
-  <button id="joinBtn">Rejoindre</button>
-  <p id="status"></p>
-</div>
+<h2>Entrer la fréquence pour chatter</h2>
+<input id="freq" placeholder="Exemple: 12380" />
+<button id="joinBtn">Rejoindre</button>
 
-<div id="call" style="display:none;">
-  <h2>En communication sur <span id="currentFreq"></span></h2>
-  <button id="leaveBtn">Quitter</button>
-  <audio id="remoteAudio" autoplay></audio>
-</div>
+<div id="status"></div>
+<button id="leaveBtn" style="display:none;">Quitter la fréquence</button>
 
-<!-- Firebase -->
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<div id="log"></div>
+
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
 
 <script>
-  // --- CONFIG FIREBASE ---
+  // Config Firebase
   const firebaseConfig = {
     apiKey: "AIzaSyDyWu4TI4PIRXfeb7yqt0WIGClgu10IjkM",
     authDomain: "kylita-f2923.firebaseapp.com",
@@ -77,205 +36,206 @@
     appId: "1:431823530994:web:88a07e633751686e5ad96b",
     measurementId: "G-F4LLNWQJ16"
   };
-
   firebase.initializeApp(firebaseConfig);
   const db = firebase.database();
 
-  // --- GLOBALS ---
+  // UI
+  const freqInput = document.getElementById('freq');
+  const joinBtn = document.getElementById('joinBtn');
+  const leaveBtn = document.getElementById('leaveBtn');
+  const statusDiv = document.getElementById('status');
+  const logDiv = document.getElementById('log');
+
+  function log(msg) {
+    console.log(msg);
+    logDiv.textContent += msg + '\n';
+    logDiv.scrollTop = logDiv.scrollHeight;
+  }
+
+  // Variables WebRTC
   let localStream = null;
   let peerConnection = null;
-  let roomRef = null;
-  let freq = null;
+  let freqRef = null;
+  let isCaller = false;
+  let remoteDescriptionSet = false;
+  let pendingCandidates = [];
 
-  // --- ICE servers (Google STUN) ---
-  const iceConfig = {
+  // Config ICE servers publiques Google
+  const iceServers = {
     iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
   };
 
-  // Gestion périphériques
-  const inputSelect = document.getElementById('inputSelect');
-  const outputSelect = document.getElementById('outputSelect');
-  const remoteAudio = document.getElementById('remoteAudio');
-
-  async function enumerateDevices() {
-    const devices = await navigator.mediaDevices.enumerateDevices();
-    const audioInputs = devices.filter(d => d.kind === 'audioinput');
-    const audioOutputs = devices.filter(d => d.kind === 'audiooutput');
-
-    inputSelect.innerHTML = '';
-    audioInputs.forEach(d => {
-      const option = document.createElement('option');
-      option.value = d.deviceId;
-      option.text = d.label || `Microphone ${inputSelect.length + 1}`;
-      inputSelect.appendChild(option);
-    });
-
-    outputSelect.innerHTML = '';
-    audioOutputs.forEach(d => {
-      const option = document.createElement('option');
-      option.value = d.deviceId;
-      option.text = d.label || `Haut-parleur ${outputSelect.length + 1}`;
-      outputSelect.appendChild(option);
-    });
-  }
-
-  // Appliquer la sortie audio choisie
-  function setOutputDevice(deviceId) {
-    if (typeof remoteAudio.sinkId !== 'undefined') {
-      remoteAudio.setSinkId(deviceId).catch(e => {
-        console.warn('Erreur setSinkId', e);
-      });
-    }
-  }
-
-  inputSelect.onchange = () => {
-    startLocalStream();
-  };
-  outputSelect.onchange = () => {
-    setOutputDevice(outputSelect.value);
-  };
-
-  async function startLocalStream() {
-    if (localStream) {
-      localStream.getTracks().forEach(t => t.stop());
-    }
-    try {
-      localStream = await navigator.mediaDevices.getUserMedia({
-        audio: { deviceId: inputSelect.value ? { exact: inputSelect.value } : undefined }
-      });
-    } catch (e) {
-      alert('Impossible d\'accéder au microphone: ' + e.message);
+  joinBtn.onclick = async () => {
+    const freq = freqInput.value.trim();
+    if (!freq) {
+      alert('Merci d’entrer une fréquence valide (ex: 12380)');
       return;
     }
-  }
+    joinBtn.disabled = true;
+    freqInput.disabled = true;
+    leaveBtn.style.display = 'inline-block';
+    statusDiv.textContent = `Connexion à la fréquence ${freq}...`;
 
-  // --- SIGNALING (Firebase) ---
+    // Nettoyer les caractères invalides pour Firebase keys (pas de . # $ [ ] dans la key)
+    const freqKey = freq.replace(/[.#$[\]]/g, "_");
+    freqRef = db.ref('frequencies/' + freqKey);
 
-  // Nettoyer l'ancienne room si existante
-  async function cleanup() {
-    if (roomRef) {
-      await roomRef.remove();
-      roomRef = null;
-    }
+    await startCall();
+  };
+
+  leaveBtn.onclick = async () => {
+    statusDiv.textContent = 'Déconnecté';
+    joinBtn.disabled = false;
+    freqInput.disabled = false;
+    leaveBtn.style.display = 'none';
+
     if (peerConnection) {
       peerConnection.close();
       peerConnection = null;
     }
-  }
+    if (localStream) {
+      localStream.getTracks().forEach(t => t.stop());
+      localStream = null;
+    }
+    if (freqRef) {
+      await freqRef.remove();
+      freqRef = null;
+    }
+    remoteDescriptionSet = false;
+    pendingCandidates = [];
+    log('Déconnexion effectuée.');
+  };
 
-  // Rejoindre une fréquence = créer/signer un canal
-  async function joinFreq(f) {
-    freq = f;
-    document.getElementById('status').textContent = 'Connexion...';
+  async function startCall() {
+    try {
+      localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      log('Micro activé');
 
-    await cleanup();
+      peerConnection = new RTCPeerConnection(iceServers);
 
-    // On crée un chemin firebase sans caractère interdit (pas de point)
-    const roomPath = 'frequencies/' + freq;
-    roomRef = db.ref(roomPath);
+      // Ajout des tracks audio au peerConnection
+      localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
 
-    // Créer peer connection
-    peerConnection = new RTCPeerConnection(iceConfig);
+      // Quand on reçoit un track, on le joue
+      peerConnection.ontrack = event => {
+        log('Flux audio reçu');
+        const remoteAudio = document.getElementById('remoteAudio');
+        if (!remoteAudio) {
+          const audioElem = document.createElement('audio');
+          audioElem.id = 'remoteAudio';
+          audioElem.autoplay = true;
+          document.body.appendChild(audioElem);
+          audioElem.srcObject = event.streams[0];
+        } else {
+          remoteAudio.srcObject = event.streams[0];
+        }
+      };
 
-    // Ajouter tracks du micro local
-    localStream.getTracks().forEach(track => {
-      peerConnection.addTrack(track, localStream);
-    });
+      peerConnection.onicecandidate = event => {
+        if (event.candidate) {
+          // Envoie ICE candidate à Firebase
+          freqRef.child(isCaller ? 'callerCandidates' : 'calleeCandidates').push(event.candidate.toJSON());
+          log('ICE candidate envoyée');
+        }
+      };
 
-    // Quand on reçoit un flux distant, on le met dans remoteAudio
-    peerConnection.ontrack = event => {
-      if (remoteAudio.srcObject !== event.streams[0]) {
-        remoteAudio.srcObject = event.streams[0];
-        console.log('Flux distant reçu');
-      }
-    };
+      // Observateurs Firebase
 
-    // Gérer candidats ICE envoyés à Firebase
-    peerConnection.onicecandidate = event => {
-      if (event.candidate) {
-        roomRef.child('candidates/' + localId).push(event.candidate.toJSON());
-      }
-    };
-
-    // Générer un ID local (random)
-    localId = Math.floor(Math.random() * 1000000).toString();
-
-    // Observer l’état de la room pour savoir si une offre existe
-    roomRef.child('offer').once('value').then(async snapshot => {
-      if (snapshot.exists()) {
-        // Si offre déjà présente, on est "answerer"
+      // Offre
+      freqRef.child('offer').on('value', async snapshot => {
         const offer = snapshot.val();
+        if (!offer || isCaller) return;
+
+        log('Offre reçue, création réponse...');
         await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+        remoteDescriptionSet = true;
 
         const answer = await peerConnection.createAnswer();
         await peerConnection.setLocalDescription(answer);
+        await freqRef.child('answer').set(answer.toJSON());
+        log('Réponse envoyée.');
 
-        await roomRef.child('answer').set(answer);
+        // Ajout candidats en attente
+        for (const c of pendingCandidates) {
+          await peerConnection.addIceCandidate(new RTCIceCandidate(c));
+        }
+        pendingCandidates = [];
+      });
 
-        listenCandidates();
-      } else {
-        // Pas d'offre : on est "offerer"
-        const offer = await peerConnection.createOffer();
-        await peerConnection.setLocalDescription(offer);
+      // Réponse
+      freqRef.child('answer').on('value', async snapshot => {
+        const answer = snapshot.val();
+        if (!answer || !isCaller) return;
 
-        await roomRef.child('offer').set(offer);
+        log('Réponse reçue');
+        await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+        remoteDescriptionSet = true;
 
-        listenCandidates();
-      }
-    });
+        // Ajout candidats en attente
+        for (const c of pendingCandidates) {
+          await peerConnection.addIceCandidate(new RTCIceCandidate(c));
+        }
+        pendingCandidates = [];
+      });
 
-    // Écoute des candidats distants
-    function listenCandidates() {
-      roomRef.child('candidates').on('child_added', async snap => {
-        const peerId = snap.key;
-        if (peerId === localId) return; // Ignorer candidats locaux
-
-        snap.ref.on('child_added', async candidateSnap => {
-          const candidate = candidateSnap.val();
+      // Candidates caller
+      freqRef.child('callerCandidates').on('child_added', async snapshot => {
+        const candidate = snapshot.val();
+        if (isCaller) return;
+        if (!remoteDescriptionSet) {
+          pendingCandidates.push(candidate);
+          log('Candidate caller stockée (remoteDescription pas encore prête)');
+        } else {
           try {
             await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
-            console.log('Candidat ajouté:', candidate);
-          } catch(e) {
-            console.warn('Erreur addIceCandidate', e);
+            log('Candidate caller ajoutée');
+          } catch (e) {
+            log('Erreur ajout candidate caller: ' + e);
           }
-        });
+        }
       });
+
+      // Candidates callee
+      freqRef.child('calleeCandidates').on('child_added', async snapshot => {
+        const candidate = snapshot.val();
+        if (!isCaller) return;
+        if (!remoteDescriptionSet) {
+          pendingCandidates.push(candidate);
+          log('Candidate callee stockée (remoteDescription pas encore prête)');
+        } else {
+          try {
+            await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+            log('Candidate callee ajoutée');
+          } catch (e) {
+            log('Erreur ajout candidate callee: ' + e);
+          }
+        }
+      });
+
+      // Créer l’offre si on est le premier (appelant)
+      const offerSnapshot = await freqRef.child('offer').get();
+      if (!offerSnapshot.exists()) {
+        isCaller = true;
+        log('Tu es l’appelant, création de l’offre...');
+        const offer = await peerConnection.createOffer();
+        await peerConnection.setLocalDescription(offer);
+        await freqRef.child('offer').set(offer.toJSON());
+        log('Offre envoyée, en attente de la réponse...');
+      } else {
+        isCaller = false;
+        log('Tu es le receveur, attente de l’offre...');
+      }
+
+      statusDiv.textContent = 'Connecté à la fréquence ' + freqInput.value;
+    } catch (err) {
+      log('Erreur : ' + err);
+      joinBtn.disabled = false;
+      freqInput.disabled = false;
+      leaveBtn.style.display = 'none';
     }
-
-    document.getElementById('status').textContent = 'Connecté sur ' + freq;
-    document.getElementById('login').style.display = 'none';
-    document.getElementById('call').style.display = 'block';
-    document.getElementById('currentFreq').textContent = freq;
-
-    setOutputDevice(outputSelect.value);
   }
-
-  document.getElementById('joinBtn').onclick = async () => {
-    const f = document.getElementById('freqInput').value.trim();
-    if (!f.match(/^\d+$/)) {
-      alert('Fréquence invalide (chiffres uniquement, ex: 12380)');
-      return;
-    }
-
-    await startLocalStream();
-    await joinFreq(f);
-  };
-
-  document.getElementById('leaveBtn').onclick = async () => {
-    await cleanup();
-    document.getElementById('login').style.display = 'block';
-    document.getElementById('call').style.display = 'none';
-    document.getElementById('status').textContent = '';
-    remoteAudio.srcObject = null;
-  };
-
-  // Au démarrage, lister les périphériques
-  enumerateDevices().then(() => {
-    if (inputSelect.options.length > 0) inputSelect.selectedIndex = 0;
-    if (outputSelect.options.length > 0) outputSelect.selectedIndex = 0;
-  });
-
 </script>
 
 </body>
 </html>
+
