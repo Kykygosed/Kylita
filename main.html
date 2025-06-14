@@ -157,8 +157,11 @@
         connections[otherId] = pc;
 
         const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-        db.ref(`${currentFrequency}/offers/${userId}/${otherId}`).set(offer);
+await pc.setLocalDescription(answer);
+setTimeout(() => {
+  db.ref(`${currentFrequency}/answers/${userId}/${callerId}`).set(pc.localDescription.toJSON());
+}, 500);
+
       });
 
       db.ref(`${currentFrequency}/offers`).on("child_added", snap => {
@@ -172,8 +175,11 @@
 
           await pc.setRemoteDescription(new RTCSessionDescription(s.val()));
           const answer = await pc.createAnswer();
-          await pc.setLocalDescription(answer);
-          db.ref(`${currentFrequency}/answers/${userId}/${callerId}`).set(answer);
+          await pc.setLocalDescription(offer);
+setTimeout(() => {
+  db.ref(`${currentFrequency}/offers/${userId}/${otherId}`).set(pc.localDescription.toJSON());
+}, 500); // délai pour laisser le temps aux ICE candidates de se préparer
+
         });
       });
 
