@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="fr">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
@@ -20,22 +20,27 @@
       color: #00ffcc;
     }
 
-    #freqInput {
+    select, input, button {
       padding: 10px;
-      font-size: 1.2em;
-      border: none;
+      margin: 5px;
       border-radius: 5px;
-      margin-bottom: 10px;
-      width: 200px;
+      font-size: 1em;
     }
 
-    #connectBtn, #toggleMic {
-      padding: 10px 20px;
-      margin: 5px;
-      font-size: 1em;
-      border: none;
+    #log {
+      background: #222;
+      padding: 10px;
       border-radius: 5px;
+      margin-top: 20px;
+      max-height: 200px;
+      overflow-y: auto;
+      width: 350px;
+      font-size: 0.9em;
+    }
+
+    button {
       cursor: pointer;
+      border: none;
     }
 
     #connectBtn {
@@ -47,22 +52,15 @@
       background: #444;
       color: white;
     }
-
-    #log {
-      background: #222;
-      padding: 10px;
-      border-radius: 5px;
-      margin-top: 20px;
-      max-height: 200px;
-      overflow-y: auto;
-      width: 300px;
-      font-size: 0.9em;
-    }
   </style>
 </head>
 <body>
   <h1>🛩️ Radio Web</h1>
-  <input id="freqInput" placeholder="Entrer fréquence (ex: 123.45)" />
+  <input id="freqInput" placeholder="Fréquence (ex: 123.45)" />
+  
+  <select id="inputSelect"></select>
+  <select id="outputSelect"></select>
+  
   <button id="connectBtn">Connexion</button>
   <button id="toggleMic" disabled>🎙️ Micro OFF</button>
 
@@ -72,8 +70,7 @@
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
 
   <script>
-    // ⚙️ Configuration Firebase (à remplacer par la tienne)
-    // For Firebase JS SDK v7.20.0 and later, measurementId is optional
+// For Firebase JS SDK v7.20.0 and later, measurementId is optional
 const firebaseConfig = {
   apiKey: "AIzaSyDyWu4TI4PIRXfeb7yqt0WIGClgu10IjkM",
   authDomain: "kylita-f2923.firebaseapp.com",
@@ -88,12 +85,16 @@ const firebaseConfig = {
     const db = firebase.database();
 
     let localStream = null;
+    let selectedInputId = null;
+    let selectedOutputId = null;
     let peers = {};
-    let userId = "user_" + Math.random().toString(36).substring(2, 9);
     let roomId = "";
     let micOn = false;
+    const userId = "user_" + Math.random().toString(36).substring(2, 9);
 
     const freqInput = document.getElementById("freqInput");
+    const inputSelect = document.getElementById("inputSelect");
+    const outputSelect = document.getElementById("outputSelect");
     const connectBtn = document.getElementById("connectBtn");
     const toggleMic = document.getElementById("toggleMic");
     const log = document.getElementById("log");
@@ -103,16 +104,41 @@ const firebaseConfig = {
       log.scrollTop = log.scrollHeight;
     }
 
+    async function listAudioDevices() {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      inputSelect.innerHTML = '';
+      outputSelect.innerHTML = '';
+
+      devices.forEach(device => {
+        const option = document.createElement('option');
+        option.value = device.deviceId;
+        option.textContent = device.label || `${device.kind} ${device.deviceId}`;
+        if (device.kind === 'audioinput') inputSelect.appendChild(option);
+        if (device.kind === 'audiooutput') outputSelect.appendChild(option);
+      });
+
+      selectedInputId = inputSelect.value;
+      selectedOutputId = outputSelect.value;
+
+      inputSelect.onchange = () => selectedInputId = inputSelect.value;
+      outputSelect.onchange = () => selectedOutputId = outputSelect.value;
+    }
+
+    listAudioDevices();
+
     connectBtn.onclick = async () => {
       roomId = freqInput.value.trim().replace(/\./g, "_");
       if (!roomId) return alert("Entrer une fréquence valide.");
+
       addLog("Connexion à la fréquence " + roomId);
       connectBtn.disabled = true;
       freqInput.disabled = true;
       toggleMic.disabled = false;
 
-      // 🔊 Micro
-      localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      localStream = await navigator.mediaDevices.getUserMedia({
+        audio: { deviceId: selectedInputId ? { exact: selectedInputId } : undefined }
+      });
+
       localStream.getAudioTracks()[0].enabled = false;
 
       const roomRef = db.ref("radio/" + roomId);
@@ -130,7 +156,7 @@ const firebaseConfig = {
 
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
-        db.ref(`signals/${roomId}/${otherId}/${userId}`).set({ offer: offer });
+        db.ref(`signals/${roomId}/${otherId}/${userId}`).set({ offer });
       });
 
       roomRef.on("child_removed", snapshot => {
@@ -142,9 +168,8 @@ const firebaseConfig = {
         }
       });
 
-      roomRef.child(userId).set(true);
+      userRef.set(true);
 
-      // 🔄 Signalisation
       db.ref("signals/" + roomId + "/" + userId).on("child_added", async snap => {
         const from = snap.key;
         const data = snap.val();
@@ -160,7 +185,7 @@ const firebaseConfig = {
           await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
           const answer = await pc.createAnswer();
           await pc.setLocalDescription(answer);
-          db.ref(`signals/${roomId}/${from}/${userId}`).set({ answer: answer });
+          db.ref(`signals/${roomId}/${from}/${userId}`).set({ answer });
         } else if (data.answer) {
           await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
         } else if (data.candidate) {
@@ -175,7 +200,7 @@ const firebaseConfig = {
         localStream.getAudioTracks()[0].enabled = micOn;
         toggleMic.textContent = micOn ? "🎙️ Micro ON" : "🎙️ Micro OFF";
         toggleMic.style.background = micOn ? "#00cc66" : "#444";
-        addLog(micOn ? "Micro activé" : "Micro coupé");
+        addLog(micOn ? "Micro activé" : "Micro désactivé");
       }
     };
 
@@ -193,12 +218,22 @@ const firebaseConfig = {
       };
 
       pc.ontrack = event => {
+        const remoteStream = event.streams[0];
         const audio = document.createElement("audio");
-        audio.srcObject = event.streams[0];
+        audio.srcObject = remoteStream;
         audio.autoplay = true;
-        audio.play().catch(e => console.warn("Audio error:", e));
+        audio.controls = false;
+
+        if ('setSinkId' in audio && selectedOutputId) {
+          audio.setSinkId(selectedOutputId).then(() => {
+            addLog("Sortie audio définie !");
+          }).catch(err => {
+            addLog("Erreur setSinkId: " + err);
+          });
+        }
+
         document.body.appendChild(audio);
-        addLog(`Flux audio reçu de ${remoteId}`);
+        addLog(`Flux reçu de ${remoteId}`);
       };
 
       return pc;
@@ -206,4 +241,3 @@ const firebaseConfig = {
   </script>
 </body>
 </html>
-
