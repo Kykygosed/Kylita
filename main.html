@@ -94,8 +94,6 @@
 <body>
   <div id="volumeBarContainer"><div id="volumeBar"></div></div>
   <div id="incomingBarContainer"><div id="incomingBar"></div></div>
-  <button id="adminBtn" style="display:none; position: fixed; top: 10px; left: 10px; z-index: 999;">🔧 Admin</button>
-
 
   <div>
     <div style="text-align: center;">
@@ -392,19 +390,6 @@
         document.getElementById("outputSelect").selectedIndex = 0;
       }
     };
-    
-  // Bouton admin
-  const adminBtn = document.getElementById("adminBtn");
-
-  // On suppose que "currentUser" contient le pseudo de l'utilisateur (ex: "kykygosed")
-  if (currentUser === "kykygosed") {
-    adminBtn.style.display = "block"; // Affiche le bouton
-    adminBtn.addEventListener("click", () => {
-      window.location.href = "admin.html";
-    });
-  }
-
-
   </script>
 </body>
 </html>
