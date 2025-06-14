@@ -225,8 +225,84 @@
         });
     }, 500);
 
-    monitorIncomingAudio(e.streams[0]); // Animation des barres
+    monitorIncomingAudio(e.streams[0]);// Animation des barres
+   createConnection(freq);
+
 };
+let pc;
+let dbRef;
+
+async function createConnection(freq) {
+  const freqKey = freq.replace('.', '_');
+  dbRef = firebase.database().ref("calls/" + freqKey);
+
+  pc = new RTCPeerConnection({
+    iceServers: [
+      { urls: "stun:stun.l.google.com:19302" }
+    ]
+  });
+
+  // Quand on reçoit un flux entrant
+  pc.ontrack = (e) => {
+    const audio = new Audio();
+    audio.srcObject = e.streams[0];
+    audio.autoplay = true;
+    document.body.appendChild(audio); // Nécessaire pour éviter le blocage de lecture
+    setTimeout(() => audio.play(), 500);
+    monitorIncomingAudio(e.streams[0]);
+  };
+
+  // ICE candidates
+  pc.onicecandidate = (event) => {
+    if (event.candidate) {
+      dbRef.child("candidates/" + pseudo).push(event.candidate.toJSON());
+    }
+  };
+
+  // Ajouter le micro local à la connexion
+  localStream.getTracks().forEach((track) => {
+    pc.addTrack(track, localStream);
+  });
+
+  // Attente de l'autre utilisateur
+  dbRef.child("offers").once("value", async (snapshot) => {
+    if (!snapshot.exists()) {
+      // Créer offre
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      dbRef.child("offers").child(pseudo).set({ sdp: offer.sdp, type: offer.type });
+    }
+  });
+
+  // Écoute des réponses (answers)
+  dbRef.child("answers").on("child_added", async (snap) => {
+    const answer = snap.val();
+    if (answer && answer.type === "answer") {
+      const remoteDesc = new RTCSessionDescription(answer);
+      await pc.setRemoteDescription(remoteDesc);
+    }
+  });
+
+  // Écoute des offres (pour répondre)
+  dbRef.child("offers").on("child_added", async (snap) => {
+    const offer = snap.val();
+    if (snap.key === pseudo) return;
+    await pc.setRemoteDescription(new RTCSessionDescription(offer));
+    const answer = await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+    dbRef.child("answers").child(pseudo).set(answer);
+  });
+
+  // ICE candidates
+  dbRef.child("candidates").on("child_added", (snap) => {
+    const userId = snap.key;
+    if (userId === pseudo) return;
+    dbRef.child("candidates").child(userId).on("child_added", (candidateSnap) => {
+      const candidate = new RTCIceCandidate(candidateSnap.val());
+      pc.addIceCandidate(candidate);
+    });
+  });
+}
 
 
         const offer = await pc.createOffer();
