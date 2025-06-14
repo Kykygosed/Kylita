@@ -111,24 +111,22 @@
     });
   }
 
-  function openPlayerPopup(song) {
-    currentSong = song;
-    playerTitle.textContent = `${song.title} - ${song.author}`;
-    audioPlayer.src = song.url;
-    playerPopup.style.display = "block";
-    audioPlayer.pause();
-    audioPlayer.load();
-  }
+function openPlayerPopup(song) {
+  currentSong = song;
+  playerTitle.textContent = `${song.title} - ${song.author}`;
+  audioPlayer.src = song.url;
+  playerPopup.style.display = "block";
+  audioPlayer.pause();
+  audioPlayer.load();
+  // Ne pas lancer automatiquement, attendre clic utilisateur
+}
 
-  closePopupBtn.onclick = () => {
-    playerPopup.style.display = "none";
-    audioPlayer.pause();
-    audioPlayer.src = "";
-  };
+document.getElementById('audioPlayer').addEventListener('play', () => {
+  console.log('Lecture commencée');
+});
 
-  addToPlaylistBtn.onclick = () => {
-    alert(`Ajouter "${currentSong.title}" à une playlist (à implémenter)`);
-  };
+// Ajouter un bouton play dans le popup (ou utiliser le player controls natif)
+
 
   searchBar.addEventListener("input", () => {
     const query = searchBar.value.toLowerCase();
