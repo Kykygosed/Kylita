@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-  <meta charset="UTF-8">
-  <title>Radio WebRTC</title>
+  <meta charset="UTF-8" />
+  <title>Radio WebRTC avec Firebase</title>
   <style>
     body {
       background-color: #555;
@@ -15,7 +15,6 @@
       height: 100vh;
       margin: 0;
     }
-
     #volumeBarContainer {
       position: fixed;
       left: 10px;
@@ -28,20 +27,17 @@
       border-radius: 10px;
       overflow: hidden;
     }
-
     #volumeBar {
       width: 100%;
       height: 0%;
       background-color: limegreen;
       transition: height 0.1s ease;
     }
-
     select, input {
       font-size: 16px;
       padding: 5px;
       margin: 5px;
     }
-
     #frequencyBox {
       font-size: 48px;
       font-weight: bold;
@@ -54,7 +50,6 @@
       text-align: center;
       font-style: italic;
     }
-
     #joinBtn {
       background-color: green;
       color: white;
@@ -67,7 +62,6 @@
       cursor: pointer;
       margin-top: 20px;
     }
-
     #microToggle {
       position: fixed;
       right: 30px;
@@ -75,15 +69,14 @@
       text-align: center;
       font-size: 14px;
       color: white;
+      cursor: pointer;
     }
-
     #microToggle i {
       font-size: 30px;
     }
   </style>
 </head>
 <body>
-
   <div id="volumeBarContainer">
     <div id="volumeBar"></div>
   </div>
@@ -96,19 +89,49 @@
       <select id="outputSelect"></select>
     </div>
 
-    <input type="text" id="frequencyBox" maxlength="7" placeholder="000.000" oninput="formatFrequency(this)">
+    <input type="text" id="frequencyBox" maxlength="7" placeholder="000.000" oninput="formatFrequency(this)" />
     <button id="joinBtn" onclick="joinFrequency()">Rejoindre</button>
   </div>
 
   <div id="microToggle">
-    <i id="micIcon">🎤</i><br>
+    <i id="micIcon">🎤</i><br />
     <span id="micStatus">OFF</span>
   </div>
 
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
   <script>
+    // Remplace par ta config Firebase depuis ta console Firebase
+// For Firebase JS SDK v7.20.0 and later, measurementId is optional
+const firebaseConfig = {
+  apiKey: "AIzaSyDyWu4TI4PIRXfeb7yqt0WIGClgu10IjkM",
+  authDomain: "kylita-f2923.firebaseapp.com",
+  databaseURL: "https://kylita-f2923-default-rtdb.firebaseio.com",
+  projectId: "kylita-f2923",
+  storageBucket: "kylita-f2923.firebasestorage.app",
+  messagingSenderId: "431823530994",
+  appId: "1:431823530994:web:88a07e633751686e5ad96b",
+  measurementId: "G-F4LLNWQJ16"
+};
+
+    // Init Firebase
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
     let localStream = null;
     let audioContext, analyser, dataArray;
     let micEnabled = false;
+
+    // WebRTC variables
+    let peerConnection = null;
+    let remoteStream = null;
+    const configuration = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
+
+    let roomRef = null;
+    let isCaller = false;
+    let frequency = null;
 
     // Format automatique XXX.XXX
     function formatFrequency(input) {
@@ -165,18 +188,105 @@
     }
 
     async function joinFrequency() {
-      const freq = document.getElementById("frequencyBox").value;
-      if (!/^\d{3}\.\d{3}$/.test(freq)) {
+      frequency = document.getElementById("frequencyBox").value;
+      if (!/^\d{3}\.\d{3}$/.test(frequency)) {
         alert("Fréquence invalide !");
         return;
       }
 
+      document.getElementById("joinBtn").disabled = true;
       await initMicrophone();
 
-      // À faire : joindre un salon WebRTC correspondant à la fréquence
-      console.log("Connecté à la fréquence : " + freq);
+      // Création de la connexion WebRTC
+      peerConnection = new RTCPeerConnection(configuration);
+
+      // Ajout des pistes audio au peer
+      localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+
+      // Création stream distant pour l'audio reçu
+      remoteStream = new MediaStream();
+
+      // Lecture de l'audio distant sur la sortie choisie
+      const audioElement = new Audio();
+      audioElement.srcObject = remoteStream;
+      audioElement.autoplay = true;
+
+      // Rediriger l'audio vers la sortie choisie si possible
+      const outputDeviceId = document.getElementById("outputSelect").value;
+      if (audioElement.setSinkId && outputDeviceId) {
+        audioElement.setSinkId(outputDeviceId).catch(e => console.warn("Erreur setSinkId:", e));
+      }
+
+      // Quand un track distant arrive, on l'ajoute au remoteStream
+      peerConnection.ontrack = event => {
+        event.streams[0].getTracks().forEach(track => {
+          remoteStream.addTrack(track);
+        });
+      };
+
+      // Gérer les ICE candidates
+      peerConnection.onicecandidate = event => {
+        if (event.candidate) {
+          roomRef.child('candidates/' + (isCaller ? 'caller' : 'callee')).push(JSON.stringify(event.candidate));
+        }
+      };
+
+      // Référence room dans Firebase
+      roomRef = db.ref('rooms/' + frequency.replace('.', '_'));
+
+      // Check si la room existe (détermine si on est caller ou callee)
+      const roomSnapshot = await roomRef.once('value');
+      if (!roomSnapshot.exists()) {
+        isCaller = true;
+        await createOffer();
+      } else {
+        isCaller = false;
+        await joinOffer();
+      }
+
+      // Écouter les candidats ICE
+      roomRef.child('candidates/' + (isCaller ? 'callee' : 'caller')).on('child_added', async snapshot => {
+        const candidate = JSON.parse(snapshot.val());
+        try {
+          await peerConnection.addIceCandidate(candidate);
+        } catch (e) {
+          console.error('Erreur addIceCandidate', e);
+        }
+      });
     }
 
+    async function createOffer() {
+      // Création offre SDP
+      const offer = await peerConnection.createOffer();
+      await peerConnection.setLocalDescription(offer);
+
+      // Stockage offre dans Firebase
+      await roomRef.set({ offer: JSON.stringify(offer) });
+
+      // Écoute de la réponse SDP
+      roomRef.child('answer').on('value', async snapshot => {
+        if (snapshot.exists()) {
+          const answer = JSON.parse(snapshot.val());
+          await peerConnection.setRemoteDescription(answer);
+        }
+      });
+    }
+
+    async function joinOffer() {
+      // Récupère l'offre SDP
+      const roomSnapshot = await roomRef.once('value');
+      const offer = JSON.parse(roomSnapshot.val().offer);
+
+      // Set remote description
+      await peerConnection.setRemoteDescription(offer);
+
+      // Crée et envoie la réponse SDP
+      const answer = await peerConnection.createAnswer();
+      await peerConnection.setLocalDescription(answer);
+      await roomRef.child('answer').set(JSON.stringify(answer));
+    }
+
+    // Toggle micro on/off
     document.getElementById("microToggle").addEventListener("click", () => {
       micEnabled = !micEnabled;
       if (localStream) {
