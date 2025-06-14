@@ -178,7 +178,7 @@
     // Créer une offre et publier sur Firebase
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
-    await frequencyRef.child('offers/' + myId).set(offer.toJSON());
+    await frequencyRef.child('offers/' + myId).set(offer);
 
     // Ecoute des offres des autres
     frequencyRef.child('offers').on('child_added', async snap => {
