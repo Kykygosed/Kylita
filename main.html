@@ -211,10 +211,23 @@
           monitorIncomingAudio(e.streams[0]);
           const audio = new Audio(); audio.srcObject=e.streams[0]; audio.play();
         };
-        pc.onicecandidate = e => { if(e.candidate) {
-          db.ref(`signals/${currentFrequency}/${pseudo}/${id}/candidates`)
-            .push(JSON.stringify(e.candidate));
-        }};
+        pc.ontrack = (e) => {
+    const audio = new Audio();
+    audio.srcObject = e.streams[0];
+    audio.autoplay = true;
+    audio.controls = true; // Optionnel : pour voir l'audio en debug
+    document.body.appendChild(audio); // Debug : pour que le navigateur autorise le son
+
+    // Ajouter un délai pour s'assurer que l'audio démarre correctement
+    setTimeout(() => {
+        audio.play().catch((err) => {
+            console.error("Erreur de lecture audio :", err);
+        });
+    }, 500);
+
+    monitorIncomingAudio(e.streams[0]); // Animation des barres
+};
+
 
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
@@ -241,7 +254,13 @@
       localStream.getTracks().forEach(t=>pc.addTrack(t, localStream));
       pc.ontrack = e => {
         monitorIncomingAudio(e.streams[0]);
-        const audio = new Audio(); audio.srcObject=e.streams[0]; audio.play();
+        const audio = new Audio();
+audio.srcObject = e.streams[0];
+audio.autoplay = true;
+audio.controls = true;
+document.body.appendChild(audio); // Pour débogage, temporaire
+monitorIncomingAudio(e.streams[0]);
+
       };
       pc.onicecandidate = e => { if(e.candidate) {
         db.ref(`signals/${currentFrequency}/${from}/${pseudo}/candidates`)
