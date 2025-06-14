@@ -2,59 +2,67 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Radio Fréquence</title>
   <style>
     body {
       margin: 0;
-      font-family: Arial, sans-serif;
-      background: #0e0e0e;
-      color: #fff;
+      font-family: sans-serif;
+      background: #111;
+      color: white;
       display: flex;
       flex-direction: column;
       align-items: center;
-      justify-content: center;
-      height: 100vh;
-    }
-    #interface {
-      background: #1c1c1c;
       padding: 20px;
-      border-radius: 12px;
-      box-shadow: 0 0 10px rgba(0,0,0,0.5);
-      width: 300px;
-      text-align: center;
     }
-    input, select, button {
-      margin: 10px 0;
-      padding: 10px;
-      width: 100%;
-      border: none;
-      border-radius: 8px;
+
+    h1 {
+      margin-bottom: 10px;
     }
-    button {
-      background-color: #4caf50;
-      color: white;
-      cursor: pointer;
+
+    select, input, button {
+      margin: 5px;
+      padding: 8px;
+      font-size: 1em;
     }
-    button:hover {
-      background-color: #45a049;
+
+    #controls {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    #status {
+      margin-top: 20px;
+      font-size: 0.9em;
+      color: #0f0;
     }
   </style>
 </head>
 <body>
-  <div id="interface">
-    <h2>Fréquence radio</h2>
-    <input id="freq" placeholder="Ex: 123.45" />
-    <select id="inputSelect"></select>
-    <select id="outputSelect"></select>
-    <button onclick="joinFreq()">Connexion</button>
-    <button id="toggleMic">Activer le micro</button>
+  <h1>🎙️ Fréquence Radio</h1>
+
+  <div id="controls">
+    <label>Fréquence (ex: 122.80):</label>
+    <input type="text" id="frequencyInput" placeholder="122.80" />
+
+    <label>Microphone:</label>
+    <select id="micSelect"></select>
+
+    <label>Haut-parleur:</label>
+    <select id="speakerSelect"></select>
+
+    <button id="joinBtn">Rejoindre la fréquence</button>
+    <button id="leaveBtn" disabled>Quitter</button>
   </div>
 
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-    import { getDatabase, ref, push, onChildAdded } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+  <div id="status">Statut: Non connecté</div>
 
+  <!-- Firebase & WebRTC -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
+  <script>
     const firebaseConfig = {
       apiKey: "AIzaSyDyWu4TI4PIRXfeb7yqt0WIGClgu10IjkM",
       authDomain: "kylita-f2923.firebaseapp.com",
@@ -66,77 +74,158 @@
       measurementId: "G-F4LLNWQJ16"
     };
 
-    const app = initializeApp(firebaseConfig);
-    const db = getDatabase(app);
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    const micSelect = document.getElementById('micSelect');
+    const speakerSelect = document.getElementById('speakerSelect');
+    const joinBtn = document.getElementById('joinBtn');
+    const leaveBtn = document.getElementById('leaveBtn');
+    const frequencyInput = document.getElementById('frequencyInput');
+    const status = document.getElementById('status');
 
     let localStream;
     let connections = {};
-    let myFreq = null;
-    let myId = Math.random().toString(36).substring(2);
+    let userId = "user_" + Math.floor(Math.random() * 100000);
+    let currentFrequency = null;
 
-    async function listDevices() {
+    async function getDevices() {
       const devices = await navigator.mediaDevices.enumerateDevices();
-      const audioInputs = devices.filter(d => d.kind === 'audioinput');
-      const audioOutputs = devices.filter(d => d.kind === 'audiooutput');
+      micSelect.innerHTML = "";
+      speakerSelect.innerHTML = "";
 
-      const inputSelect = document.getElementById('inputSelect');
-      const outputSelect = document.getElementById('outputSelect');
-      inputSelect.innerHTML = '';
-      outputSelect.innerHTML = '';
-
-      audioInputs.forEach(device => {
-        const option = document.createElement('option');
+      devices.forEach(device => {
+        const option = document.createElement("option");
         option.value = device.deviceId;
-        option.text = device.label || `Micro ${inputSelect.length+1}`;
-        inputSelect.appendChild(option);
-      });
-
-      audioOutputs.forEach(device => {
-        const option = document.createElement('option');
-        option.value = device.deviceId;
-        option.text = device.label || `Sortie ${outputSelect.length+1}`;
-        outputSelect.appendChild(option);
+        option.text = device.label || `${device.kind} ${micSelect.length + 1}`;
+        if (device.kind === "audioinput") micSelect.appendChild(option);
+        if (device.kind === "audiooutput") speakerSelect.appendChild(option);
       });
     }
 
-    listDevices();
-
-    async function joinFreq() {
-      myFreq = document.getElementById("freq").value.replace(/[^0-9.]/g, "");
-      if (!myFreq) return alert("Entrez une fréquence valide.");
-      const inputId = document.getElementById("inputSelect").value;
-      localStream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: inputId ? { exact: inputId } : undefined } });
-
-      const freqRef = ref(db, `freqs/${myFreq}`);
-
-      onChildAdded(freqRef, async (snap) => {
-        const data = snap.val();
-        if (data.from === myId) return;
-        const blob = new Blob([new Uint8Array(data.audio)], { type: 'audio/webm' });
-        const url = URL.createObjectURL(blob);
-        const audio = new Audio(url);
-        const sinkId = document.getElementById("outputSelect").value;
-        if (audio.setSinkId && sinkId) {
-          try { await audio.setSinkId(sinkId); } catch(e) { console.warn("Impossible de changer de sortie audio", e); }
+    async function startStream() {
+      const constraints = {
+        audio: {
+          deviceId: micSelect.value ? { exact: micSelect.value } : undefined
         }
-        audio.play();
-      });
+      };
+      localStream = await navigator.mediaDevices.getUserMedia(constraints);
+      for (const id in connections) {
+        localStream.getTracks().forEach(track => connections[id].addTrack(track, localStream));
+      }
     }
 
-    document.getElementById("toggleMic").addEventListener("click", () => {
-      if (!localStream) return alert("Connecte-toi d'abord à une fréquence.");
-      const recorder = new MediaRecorder(localStream);
-      recorder.ondataavailable = async e => {
-        if (e.data.size > 0) {
-          const arrayBuffer = await e.data.arrayBuffer();
-          push(ref(db, `freqs/${myFreq}`), {
-            from: myId,
-            audio: Array.from(new Uint8Array(arrayBuffer))
+    function createPeerConnection(targetId) {
+      const pc = new RTCPeerConnection();
+      pc.onicecandidate = e => {
+        if (e.candidate) {
+          db.ref(`${currentFrequency}/candidates/${userId}/${targetId}`).push(e.candidate.toJSON());
+        }
+      };
+
+      pc.ontrack = e => {
+        const audio = new Audio();
+        audio.srcObject = e.streams[0];
+        audio.autoplay = true;
+
+        const selectedDeviceId = speakerSelect.value;
+        if ("setSinkId" in audio && selectedDeviceId) {
+          audio.setSinkId(selectedDeviceId).catch(e => {
+            console.warn("Impossible de rediriger vers le haut-parleur sélectionné:", e);
           });
         }
       };
-      recorder.start(1000); // envoie toutes les secondes
-    });
+
+      localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+      return pc;
+    }
+
+    async function joinFrequency() {
+      currentFrequency = "freq_" + frequencyInput.value.replace(".", "_");
+      status.textContent = `Statut: Connecté à ${frequencyInput.value}`;
+
+      await startStream();
+
+      db.ref(`${currentFrequency}/users/${userId}`).set(true);
+      db.ref(`${currentFrequency}/users/${userId}`).onDisconnect().remove();
+
+      db.ref(`${currentFrequency}/users`).on("child_added", async snap => {
+        const otherId = snap.key;
+        if (otherId === userId || connections[otherId]) return;
+
+        const pc = createPeerConnection(otherId);
+        connections[otherId] = pc;
+
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        db.ref(`${currentFrequency}/offers/${userId}/${otherId}`).set(offer);
+      });
+
+      db.ref(`${currentFrequency}/offers`).on("child_added", snap => {
+        const callerId = snap.key;
+        if (callerId === userId) return;
+
+        db.ref(`${currentFrequency}/offers/${callerId}/${userId}`).once("value", async s => {
+          if (!s.exists()) return;
+          const pc = createPeerConnection(callerId);
+          connections[callerId] = pc;
+
+          await pc.setRemoteDescription(new RTCSessionDescription(s.val()));
+          const answer = await pc.createAnswer();
+          await pc.setLocalDescription(answer);
+          db.ref(`${currentFrequency}/answers/${userId}/${callerId}`).set(answer);
+        });
+      });
+
+      db.ref(`${currentFrequency}/answers`).on("child_added", snap => {
+        const answererId = snap.key;
+        if (answererId === userId) return;
+
+        db.ref(`${currentFrequency}/answers/${answererId}/${userId}`).once("value", async s => {
+          if (s.exists() && connections[answererId]) {
+            await connections[answererId].setRemoteDescription(new RTCSessionDescription(s.val()));
+          }
+        });
+      });
+
+      db.ref(`${currentFrequency}/candidates`).on("child_added", snap => {
+        const senderId = snap.key;
+        if (senderId === userId) return;
+
+        db.ref(`${currentFrequency}/candidates/${senderId}/${userId}`).on("child_added", s => {
+          const candidate = new RTCIceCandidate(s.val());
+          if (connections[senderId]) {
+            connections[senderId].addIceCandidate(candidate);
+          }
+        });
+      });
+
+      joinBtn.disabled = true;
+      leaveBtn.disabled = false;
+    }
+
+    async function leaveFrequency() {
+      db.ref(`${currentFrequency}/users/${userId}`).remove();
+      status.textContent = `Statut: Déconnecté`;
+      joinBtn.disabled = false;
+      leaveBtn.disabled = true;
+
+      Object.values(connections).forEach(pc => pc.close());
+      connections = {};
+
+      if (localStream) {
+        localStream.getTracks().forEach(track => track.stop());
+        localStream = null;
+      }
+
+      currentFrequency = null;
+    }
+
+    joinBtn.onclick = joinFrequency;
+    leaveBtn.onclick = leaveFrequency;
+
+    getDevices();
+    navigator.mediaDevices.ondevicechange = getDevices;
   </script>
 </body>
 </html>
