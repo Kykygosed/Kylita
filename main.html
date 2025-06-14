@@ -1,225 +1,203 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-  <meta charset="UTF-8">
-  <title>Chat temps réel</title>
+  <meta charset="UTF-8" />
+  <title>Radio WebRTC</title>
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    html, body {
-      height: 100%;
-      font-family: 'Segoe UI', sans-serif;
-      background: url('https://images.unsplash.com/photo-1506744038136-46273834b3fb') no-repeat center center fixed;
-      background-size: cover;
-      overflow: hidden;
-    }
-
-    #loader {
-      position: fixed;
-      top: 0; left: 0;
-      width: 100%; height: 100%;
-      background: rgba(0,0,0,0.7);
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      z-index: 9999;
-    }
-    .spinner {
-      border: 8px solid rgba(255,255,255,0.2);
-      border-top: 8px solid white;
-      border-radius: 50%;
-      width: 80px; height: 80px;
-      animation: spin 1s linear infinite;
-    }
-    @keyframes spin { to { transform: rotate(360deg); } }
-
-    #chat-container {
-      position: absolute;
-      top: 0; left: 0;
-      width: 60%;
-      height: 100%;
-      padding: 20px;
-      overflow-y: auto;
+    /* (identique à ton style existant) */
+    body {
+      background-color: #555;
+      color: white;
+      font-family: Arial, sans-serif;
       display: flex;
       flex-direction: column;
-      gap: 15px;
-    }
-
-    .message {
-      background: rgba(255,255,255,0.1);
-      backdrop-filter: blur(8px);
-      border-radius: 15px;
-      padding: 10px 15px;
-      color: white;
-      width: fit-content;
-      max-width: 90%;
-    }
-
-    .author {
-      font-size: 0.9em;
-      margin-bottom: 4px;
-      color: gray;
-    }
-
-    .author.kykygosed {
-      color: red;
-    }
-
-    .text {
-      font-size: 1.1em;
-      margin-bottom: 5px;
-    }
-
-    .date {
-      font-size: 0.8em;
-      color: #ccc;
-      text-align: right;
-    }
-
-    #input-bar {
-      position: absolute;
-      bottom: 20px;
-      left: 20px;
-      width: 55%;
-      display: flex;
       align-items: center;
-      background: rgba(255,255,255,0.1);
-      backdrop-filter: blur(8px);
-      border-radius: 15px;
-      padding: 10px 15px;
+      justify-content: center;
+      height: 100vh;
+      margin: 0;
     }
-
-
-
-    #sendBtn {
-      background: none;
-      border: none;
+    #volumeBarContainer {
+      position: fixed;
+      left: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 20px;
+      height: 200px;
+      background-color: #333;
+      border: 2px solid #777;
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    #volumeBar {
+      width: 100%;
+      height: 0%;
+      background-color: limegreen;
+      transition: height 0.1s ease;
+    }
+    select, input {
+      font-size: 16px;
+      padding: 5px;
+      margin: 5px;
+    }
+    #frequencyBox {
+      font-size: 48px;
+      font-weight: bold;
+      background: #111;
+      border: 5px solid orange;
       color: white;
+      padding: 10px 30px;
+      border-radius: 8px;
+      margin: 10px;
+      text-align: center;
+      font-style: italic;
+    }
+    #joinBtn {
+      background-color: green;
+      color: white;
+      border: none;
+      border-radius: 50%;
+      width: 100px;
+      height: 100px;
+      font-size: 18px;
+      font-weight: bold;
       cursor: pointer;
-      font-size: 1.5em;
-      margin-left: 10px;
+      margin-top: 20px;
     }
-
-    ::placeholder {
-      color: #ccc;
+    #microToggle {
+      position: fixed;
+      right: 30px;
+      bottom: 40%;
+      text-align: center;
+      font-size: 14px;
+      color: white;
     }
-
-#chat-wrapper {
-  display: flex;
-  flex-direction: column;
-  height: 100vh;
-}
-
-#chat-container {
-  flex: 1;
-  overflow-y: auto;
-  padding: 10px;
-  background-color: #f5f5f5;
-}
-
-#input-area {
-  display: flex;
-  padding: 10px;
-  background-color: white;
-  border-top: 1px solid #ccc;
-}
-
-#messageInput {
-  flex: 1;
-  padding: 8px;
-  font-size: 14px;
-}
-
-
-
+    #microToggle i {
+      font-size: 30px;
+    }
   </style>
 </head>
 <body>
+  <div id="volumeBarContainer"><div id="volumeBar"></div></div>
 
-  <div id="loader">
-    <div class="spinner"></div>
+  <div>
+    <div style="text-align: center;">
+      <p><em>PÉRIPHÉRIQUE ENTRÉE</em></p>
+      <select id="inputSelect"></select>
+      <p><em>PÉRIPHÉRIQUE SORTIE</em></p>
+      <select id="outputSelect"></select>
+    </div>
+
+    <input type="text" id="frequencyBox" maxlength="7" placeholder="000.000" oninput="formatFrequency(this)">
+    <button id="joinBtn" onclick="joinFrequency()">Rejoindre</button>
   </div>
 
-  <div id="chat-container"></div>
-  <h1> </h1>
-
-  <div id="input-bar">
-    <input type="text" id="messageInput" placeholder="Votre message...">
-    <button id="sendBtn">✉️</button>
+  <div id="microToggle">
+    <i id="micIcon">🎤</i><br>
+    <span id="micStatus">OFF</span>
   </div>
 
-    // 🔥 Import Firebase modules
-    <script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-app.js";
-  import { getFirestore, collection, addDoc, onSnapshot, serverTimestamp, query, orderBy } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js";
-  import { getDatabase, ref, get } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-database.js";
+  <!-- Firebase App -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
 
-  const firebaseConfig = {
-  apiKey: "AIzaSyDyWu4TI4PIRXfeb7yqt0WIGClgu10IjkM",
-  authDomain: "kylita-f2923.firebaseapp.com",
-  projectId: "kylita-f2923",
-  storageBucket: "kylita-f2923.firebasestorage.app",
-  messagingSenderId: "431823530994",
-  appId: "1:431823530994:web:88a07e633751686e5ad96b",
-  measurementId: "G-F4LLNWQJ16"
-};
+  <script>
+    // CONFIG FIREBASE
+    const firebaseConfig = {
+      apiKey: "AIzaSyDyWu4TI4PIRXfeb7yqt0WIGClgu10IjkM",
+      authDomain: "kylita-f2923.firebaseapp.com",
+      databaseURL: "https://kylita-f2923-default-rtdb.firebaseio.com",
+      projectId: "kylita-f2923",
+      storageBucket: "kylita-f2923.appspot.com",
+      messagingSenderId: "431823530994",
+      appId: "1:431823530994:web:88a07e633751686e5ad96b",
+      measurementId: "G-F4LLNWQJ16"
+    };
 
-  const app = initializeApp(firebaseConfig);
-  const db = getFirestore(app);
-  const rtdb = getDatabase(app);
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
 
-  const chatContainer = document.getElementById("chat-container");
-  const sendBtn = document.getElementById("sendBtn");
-  const input = document.getElementById("messageInput");
+    let localStream = null;
+    let audioContext, analyser, dataArray;
+    let micEnabled = false;
+    let pseudo = localStorage.getItem("pseudo") || "Anonyme";
 
-  const messagesRef = collection(db, "messages");
-  const q = query(messagesRef, orderBy("timestamp", "asc"));
+    function formatFrequency(input) {
+      let val = input.value.replace(/\D/g, "");
+      if (val.length > 3) val = val.slice(0, 3) + "." + val.slice(3, 6);
+      input.value = val;
+    }
 
-  let pseudo = localStorage.getItem("pseudo") || "Anonyme";
+    async function listAudioDevices() {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const inputSelect = document.getElementById("inputSelect");
+      const outputSelect = document.getElementById("outputSelect");
+      inputSelect.innerHTML = "";
+      outputSelect.innerHTML = "";
+      devices.forEach(device => {
+        const option = document.createElement("option");
+        option.value = device.deviceId;
+        option.text = device.label || `${device.kind}`;
+        if (device.kind === "audioinput") inputSelect.appendChild(option);
+        if (device.kind === "audiooutput") outputSelect.appendChild(option);
+      });
+    }
 
+    async function initMicrophone() {
+      const inputDeviceId = document.getElementById("inputSelect").value;
+      localStream = await navigator.mediaDevices.getUserMedia({
+        audio: { deviceId: inputDeviceId ? { exact: inputDeviceId } : undefined },
+        video: false
+      });
 
-  // 🔥 Envoi de message
-  sendBtn.addEventListener("click", async () => {
-    const msg = input.value.trim();
-    if (msg === "") return;
+      audioContext = new AudioContext();
+      const source = audioContext.createMediaStreamSource(localStream);
+      analyser = audioContext.createAnalyser();
+      analyser.fftSize = 256;
+      source.connect(analyser);
+      dataArray = new Uint8Array(analyser.frequencyBinCount);
+      updateVolumeBar();
+    }
 
-    await addDoc(messagesRef, {
-      author: pseudo,
-      text: msg,
-      timestamp: serverTimestamp()
+    function updateVolumeBar() {
+      if (!analyser) return;
+      analyser.getByteFrequencyData(dataArray);
+      let values = 0;
+      for (let i = 0; i < dataArray.length; i++) values += dataArray[i];
+      let average = values / dataArray.length;
+      let heightPercent = Math.min(100, (average / 255) * 100);
+      document.getElementById("volumeBar").style.height = heightPercent + "%";
+      requestAnimationFrame(updateVolumeBar);
+    }
+
+    async function joinFrequency() {
+      const freq = document.getElementById("frequencyBox").value;
+      if (!/^\d{3}\.\d{3}$/.test(freq)) {
+        alert("Fréquence invalide !");
+        return;
+      }
+
+      await initMicrophone();
+
+      // 🔥 Enregistrement du pseudo dans Firebase sous /frequences/xxx.xxx/
+      const freqKey = freq.replace('.', '_');
+      const userRef = db.ref("frequences/" + freqKey + "/" + pseudo);
+      userRef.set({
+        connectedAt: Date.now()
+      });
+
+      console.log(`Connecté à la fréquence ${freq} en tant que ${pseudo}`);
+    }
+
+    document.getElementById("microToggle").addEventListener("click", () => {
+      micEnabled = !micEnabled;
+      if (localStream) {
+        localStream.getAudioTracks()[0].enabled = micEnabled;
+      }
+      document.getElementById("micIcon").textContent = micEnabled ? "🎤" : "🔇";
+      document.getElementById("micStatus").textContent = micEnabled ? "ON" : "OFF";
     });
 
-    input.value = "";
-  });
-
-  // 🔁 Affichage temps réel
-  onSnapshot(q, snapshot => {
-    chatContainer.innerHTML = "";
-    snapshot.forEach(doc => {
-      const data = doc.data();
-      const div = document.createElement("div");
-      div.className = "message";
-
-      const authorClass = data.author.toLowerCase() === "kykygosed" ? "author kykygosed" : "author";
-      const date = data.timestamp?.toDate().toLocaleString("fr-FR") ?? "(non daté)";
-
-      div.innerHTML = `
-        <div class="${authorClass}">${data.author}</div>
-        <div class="text">${data.text}</div>
-        <div class="date">${date}</div>
-      `;
-      chatContainer.appendChild(div);
-    });
-
-    chatContainer.scrollTop = chatContainer.scrollHeight;
-  });
-
-  // ✅ Masque le loader après chargement
-  window.addEventListener("load", () => {
-    setTimeout(() => {
-      document.getElementById("loader").style.display = "none";
-    }, 1500);
-  });
-</script>
-
+    navigator.mediaDevices.getUserMedia({ audio: true }).then(listAudioDevices);
+  </script>
 </body>
 </html>
