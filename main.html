@@ -3,40 +3,79 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Radio Fréquence WebRTC</title>
+<title>Talkie WebRTC - Fréquence</title>
 <style>
-  body { font-family: Arial, sans-serif; background: #222; color: white; margin: 0; padding: 20px; }
-  label, select, input, button { font-size: 1rem; margin: 5px 0; }
-  #log { height: 150px; overflow-y: auto; background: #111; padding: 10px; border-radius: 5px; }
+  body {
+    font-family: Arial, sans-serif;
+    background: #222;
+    color: #eee;
+    margin: 0; padding: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh;
+  }
+  #login, #room {
+    background: #333;
+    padding: 20px;
+    border-radius: 8px;
+    width: 320px;
+    box-sizing: border-box;
+  }
+  input, select, button {
+    width: 100%;
+    padding: 8px;
+    margin: 10px 0;
+    font-size: 1rem;
+    border-radius: 4px;
+    border: none;
+  }
+  button {
+    background: #28a745;
+    color: white;
+    cursor: pointer;
+  }
+  button:disabled {
+    background: #555;
+    cursor: not-allowed;
+  }
+  #users {
+    margin-top: 10px;
+    font-size: 0.9rem;
+  }
+  #micToggle {
+    margin-top: 15px;
+    background: #dc3545;
+  }
 </style>
 </head>
 <body>
 
-<h1>Radio Fréquence WebRTC</h1>
+<div id="login">
+  <h2>Rejoindre une fréquence</h2>
+  <input type="text" id="freqInput" placeholder="Ex: 12380 (pas de . ni de #)" maxlength="10" />
+  <button id="joinBtn">Rejoindre</button>
+</div>
 
-<label for="frequency">Entrez votre fréquence (ex: 12380 pour 123.80 MHz):</label><br />
-<input type="text" id="frequency" placeholder="Ex: 12380" />
-<button id="joinBtn">Rejoindre la fréquence</button>
+<div id="room" style="display:none;">
+  <h2>Fréquence: <span id="currentFreq"></span></h2>
+  
+  <label for="inputSelect">Micro (entrée) :</label>
+  <select id="inputSelect"></select>
 
-<hr />
+  <label for="outputSelect">Haut-parleurs (sortie) :</label>
+  <select id="outputSelect"></select>
 
-<label for="inputDevice">Microphone:</label>
-<select id="inputDevice"></select><br />
+  <button id="micToggle">Micro ON</button>
+  
+  <div id="users">
+    <strong>Participants connectés:</strong>
+    <ul id="userList"></ul>
+  </div>
+</div>
 
-<label for="outputDevice">Sortie audio:</label>
-<select id="outputDevice"></select><br />
-
-<button id="muteBtn">Mute / Unmute Micro</button>
-
-<hr />
-
-<div id="log"></div>
-
-<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
 
 <script>
-  // ======= CONFIG FIREBASE =======
+  // --- CONFIGURATION FIREBASE ---
   const firebaseConfig = {
     apiKey: "AIzaSyDyWu4TI4PIRXfeb7yqt0WIGClgu10IjkM",
     authDomain: "kylita-f2923.firebaseapp.com",
@@ -50,202 +89,245 @@
   firebase.initializeApp(firebaseConfig);
   const db = firebase.database();
 
-  // ======= Variables =======
+  // --- VARIABLES GLOBALES ---
   let pc;
   let localStream;
-  let frequencyRef;
-  let myId = Math.random().toString(36).substring(2, 10);
-  let remoteStreams = {};
-  let isMuted = false;
+  let remoteStream = new MediaStream();
+  let freqRef;       // Référence Firebase pour la fréquence
+  let myId;          // ID unique (timestamp + random)
+  let freq;
+  let micEnabled = true;
 
-  // Gérer les logs
-  const logDiv = document.getElementById('log');
-  function log(msg) {
-    console.log(msg);
-    const p = document.createElement('p');
-    p.textContent = msg;
-    logDiv.appendChild(p);
-    logDiv.scrollTop = logDiv.scrollHeight;
+  // Elements HTML
+  const loginDiv = document.getElementById('login');
+  const roomDiv = document.getElementById('room');
+  const freqInput = document.getElementById('freqInput');
+  const joinBtn = document.getElementById('joinBtn');
+  const currentFreqSpan = document.getElementById('currentFreq');
+  const inputSelect = document.getElementById('inputSelect');
+  const outputSelect = document.getElementById('outputSelect');
+  const micToggleBtn = document.getElementById('micToggle');
+  const userList = document.getElementById('userList');
+
+  // Génère un ID unique simple
+  function generateId() {
+    return Date.now().toString() + '_' + Math.floor(Math.random() * 100000);
   }
 
-  // ======= Gestion des périphériques =======
-  const inputSelect = document.getElementById('inputDevice');
-  const outputSelect = document.getElementById('outputDevice');
-
-  async function updateDevices() {
+  // --- Gestion des périphériques ---
+  async function enumerateDevices() {
     const devices = await navigator.mediaDevices.enumerateDevices();
 
+    // Entrées audio
     inputSelect.innerHTML = '';
-    outputSelect.innerHTML = '';
-
-    devices.forEach(device => {
+    devices.filter(d => d.kind === 'audioinput').forEach(d => {
       const option = document.createElement('option');
-      option.value = device.deviceId;
-      option.text = device.label || (device.kind === 'audioinput' ? 'Microphone' : 'Haut-parleur');
-      if (device.kind === 'audioinput') {
-        inputSelect.appendChild(option);
-      }
-      if (device.kind === 'audiooutput') {
-        outputSelect.appendChild(option);
-      }
+      option.value = d.deviceId;
+      option.text = d.label || `Microphone ${inputSelect.length + 1}`;
+      inputSelect.appendChild(option);
+    });
+
+    // Sorties audio
+    outputSelect.innerHTML = '';
+    devices.filter(d => d.kind === 'audiooutput').forEach(d => {
+      const option = document.createElement('option');
+      option.value = d.deviceId;
+      option.text = d.label || `Haut-parleur ${outputSelect.length + 1}`;
+      outputSelect.appendChild(option);
     });
   }
 
-  inputSelect.onchange = async () => {
-    if (localStream) {
-      const audioTrack = localStream.getAudioTracks()[0];
-      if (audioTrack) audioTrack.stop();
-      const newStream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: inputSelect.value } });
-      localStream.removeTrack(audioTrack);
-      localStream.addTrack(newStream.getAudioTracks()[0]);
-      pc.getSenders().forEach(sender => {
-        if (sender.track.kind === 'audio') {
-          sender.replaceTrack(localStream.getAudioTracks()[0]);
-        }
-      });
+  // Applique la sortie audio sur l'élément audio distant
+  function setAudioOutput(deviceId) {
+    if ('setSinkId' in remoteAudio) {
+      remoteAudio.setSinkId(deviceId).catch(e => console.warn('Erreur setSinkId:', e));
+    } else {
+      console.warn('setSinkId non supporté par ce navigateur.');
     }
-  };
-
-  outputSelect.onchange = () => {
-    setOutputDevice(outputSelect.value);
-  };
-
-  async function setOutputDevice(deviceId) {
-    const audios = document.querySelectorAll('audio');
-    audios.forEach(audio => {
-      if (typeof audio.setSinkId !== 'undefined') {
-        audio.setSinkId(deviceId).catch(e => log('Erreur sortie audio: ' + e));
-      }
-    });
   }
 
-  // ======= WebRTC =======
-  const servers = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+  // --- Création de la PeerConnection ---
+  function createPeerConnection() {
+    const servers = {
+      iceServers: [
+        {urls: "stun:stun.l.google.com:19302"},
+      ]
+    };
+    const connection = new RTCPeerConnection(servers);
 
-  // Stocker candidats reçus avant setRemoteDescription
-  let pendingCandidates = [];
-  let remoteDescSet = false;
-
-  async function startConnection(freq) {
-    log('Initialisation de la connexion sur fréquence: ' + freq);
-
-    frequencyRef = db.ref('frequencies/' + freq);
-
-    pc = new RTCPeerConnection(servers);
-
-    pc.onicecandidate = event => {
-      if (event.candidate) {
-        frequencyRef.child('candidates/' + myId).push(event.candidate.toJSON());
+    connection.onicecandidate = e => {
+      if (e.candidate) {
+        freqRef.child('candidates').child(myId).push(e.candidate.toJSON());
       }
     };
 
-    pc.ontrack = event => {
-      if (!remoteStreams[event.streams[0].id]) {
-        remoteStreams[event.streams[0].id] = event.streams[0];
-        const audio = document.createElement('audio');
-        audio.srcObject = event.streams[0];
-        audio.autoplay = true;
-        audio.controls = false;
-        document.body.appendChild(audio);
-        setOutputDevice(outputSelect.value);
-        log('Stream distant reçu');
-      }
+    connection.ontrack = e => {
+      remoteStream.addTrack(e.track);
     };
 
-    localStream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: inputSelect.value || undefined } });
+    return connection;
+  }
+
+  // --- Start local audio stream ---
+  async function startLocalStream(deviceId) {
+    if (localStream) {
+      localStream.getTracks().forEach(t => t.stop());
+    }
+    localStream = await navigator.mediaDevices.getUserMedia({
+      audio: {deviceId: deviceId ? {exact: deviceId} : undefined},
+      video: false
+    });
     localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+  }
 
-    // Ecoute des candidates sur Firebase
-    frequencyRef.child('candidates').on('child_added', async snapshot => {
-      const peerId = snapshot.key;
-      if (peerId === myId) return; // Ignorer ses propres candidats
-      snapshot.ref.on('child_added', async cSnapshot => {
-        const candidate = new RTCIceCandidate(cSnapshot.val());
-        if (remoteDescSet) {
-          try {
-            await pc.addIceCandidate(candidate);
-            log('ICE candidate ajouté');
-          } catch (e) {
-            log('Erreur addIceCandidate: ' + e);
-          }
-        } else {
-          pendingCandidates.push(candidate);
-          log('ICE candidate en attente');
-        }
+  // --- Nettoyage Firebase + PeerConnection ---
+  async function cleanUp() {
+    if (pc) {
+      pc.close();
+      pc = null;
+    }
+    if (freqRef) {
+      await freqRef.child('participants').child(myId).remove();
+      await freqRef.child('candidates').child(myId).remove();
+      await freqRef.child('offers').child(myId).remove();
+      await freqRef.child('answers').child(myId).remove();
+    }
+  }
+
+  // --- Rejoins la fréquence ---
+  async function joinFrequency(chosenFreq) {
+    freq = chosenFreq;
+    myId = generateId();
+    freqRef = db.ref('frequencies/' + freq);
+
+    // Ajoute participant
+    await freqRef.child('participants').child(myId).set(true);
+
+    // Montre la fréquence et cache login
+    currentFreqSpan.textContent = freq;
+    loginDiv.style.display = 'none';
+    roomDiv.style.display = 'block';
+
+    // Crée la PeerConnection
+    pc = createPeerConnection();
+
+    // Crée la balise audio distante pour écouter
+    remoteAudio.srcObject = remoteStream;
+    remoteAudio.play();
+
+    // Commence la capture audio locale avec premier micro sélectionné
+    await startLocalStream(inputSelect.value);
+
+    updateUserList();
+
+    // Écoute les candidats entrants
+    freqRef.child('candidates').on('child_added', snapshot => {
+      const userId = snapshot.key;
+      if (userId === myId) return; // Ignore toi-même
+      snapshot.forEach(candidateSnap => {
+        const candidate = candidateSnap.val();
+        pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(console.error);
       });
     });
 
-    // Créer une offre et publier sur Firebase
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
-    await frequencyRef.child('offers/' + myId).set(offer);
+    // Écoute les offres
+    freqRef.child('offers').on('child_added', async snapshot => {
+      const offerUserId = snapshot.key;
+      if (offerUserId === myId) return;
+      const offerData = snapshot.val();
 
-    // Ecoute des offres des autres
-    frequencyRef.child('offers').on('child_added', async snap => {
-      const id = snap.key;
-      if (id === myId) return; // Ignorer sa propre offre
+      if (pc.signalingState !== "stable") return;
 
-      const offerDesc = snap.val();
-      if (!remoteDescSet) {
-        log('Offre reçue de ' + id);
-        await pc.setRemoteDescription(new RTCSessionDescription(offerDesc));
-        remoteDescSet = true;
+      await pc.setRemoteDescription(new RTCSessionDescription(offerData));
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
 
-        // Ajouter candidats en attente
-        for (const c of pendingCandidates) {
-          await pc.addIceCandidate(c).catch(e => log('Erreur ajout candidat en attente: ' + e));
-        }
-        pendingCandidates = [];
+      await freqRef.child('answers').child(myId).set(answer);
 
-        // Créer une réponse
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-        await frequencyRef.child('answers/' + myId).set(answer.toJSON());
+    });
+
+    // Écoute les réponses
+    freqRef.child('answers').on('child_added', async snapshot => {
+      const answerUserId = snapshot.key;
+      if (answerUserId === myId) return;
+      const answerData = snapshot.val();
+
+      if (pc.signalingState === "have-local-offer") {
+        await pc.setRemoteDescription(new RTCSessionDescription(answerData));
       }
     });
 
-    // Ecoute des réponses
-    frequencyRef.child('answers').on('child_added', async snap => {
-      const id = snap.key;
-      if (id !== myId) return; // On ne traite que sa propre réponse
-      const answerDesc = snap.val();
-      if (!remoteDescSet) {
-        await pc.setRemoteDescription(new RTCSessionDescription(answerDesc));
-        remoteDescSet = true;
+    // Lorsque l'interface demande la connexion, crée une offre
+    joinBtn.disabled = true;
+  }
 
-        // Ajouter candidats en attente
-        for (const c of pendingCandidates) {
-          await pc.addIceCandidate(c).catch(e => log('Erreur ajout candidat en attente: ' + e));
-        }
-        pendingCandidates = [];
-      }
+  // --- Met à jour la liste des participants ---
+  async function updateUserList() {
+    freqRef.child('participants').on('value', snapshot => {
+      const participants = snapshot.val() || {};
+      userList.innerHTML = '';
+      Object.keys(participants).forEach(id => {
+        const li = document.createElement('li');
+        li.textContent = id === myId ? `${id} (Vous)` : id;
+        userList.appendChild(li);
+      });
     });
   }
 
-  // ======= UI =======
-  document.getElementById('joinBtn').onclick = async () => {
-    const freqRaw = document.getElementById('frequency').value.trim();
-    if (!freqRaw.match(/^\d+$/)) {
-      alert('Fréquence invalide. Utilisez uniquement des chiffres sans point ni virgule.');
+  // --- Gestion du bouton micro ---
+  micToggleBtn.onclick = () => {
+    if (!localStream) return;
+    micEnabled = !micEnabled;
+    localStream.getAudioTracks().forEach(t => t.enabled = micEnabled);
+    micToggleBtn.textContent = micEnabled ? 'Micro ON' : 'Micro OFF';
+  };
+
+  // --- Gestion du changement de périphérique entrée ---
+  inputSelect.onchange = async () => {
+    if (!pc) return;
+    await startLocalStream(inputSelect.value);
+    micEnabled = true;
+    micToggleBtn.textContent = 'Micro ON';
+  };
+
+  // --- Gestion du changement de sortie audio ---
+  outputSelect.onchange = () => {
+    setAudioOutput(outputSelect.value);
+  };
+
+  // --- Initialisation ---
+  async function init() {
+    await enumerateDevices();
+  }
+
+  // --- Evénement bouton rejoindre ---
+  joinBtn.onclick = async () => {
+    let val = freqInput.value.trim();
+    // Nettoyage fréquence pour enlever points, #, $, [, ]
+    val = val.replace(/[.#$\[\]]/g, '');
+    if (!val) {
+      alert('Fréquence invalide (ne doit pas contenir ., #, $, [, ])');
       return;
     }
-    await updateDevices();
-    await startConnection(freqRaw);
+    await joinFrequency(val);
   };
 
-  document.getElementById('muteBtn').onclick = () => {
-    if (!localStream) return;
-    isMuted = !isMuted;
-    localStream.getAudioTracks().forEach(track => track.enabled = !isMuted);
-    document.getElementById('muteBtn').textContent = isMuted ? 'Unmute Micro' : 'Mute Micro';
-  };
+  // --- Création élément audio distant (invisible) ---
+  const remoteAudio = document.createElement('audio');
+  remoteAudio.autoplay = true;
+  remoteAudio.controls = false;
+  remoteAudio.style.display = 'none';
+  document.body.appendChild(remoteAudio);
 
-  // Initialisation liste périphériques
-  updateDevices();
+  window.onload = init;
+
+  // Nettoyage quand l'utilisateur quitte la page
+  window.onbeforeunload = cleanUp;
 
 </script>
 
 </body>
 </html>
+
 
 
