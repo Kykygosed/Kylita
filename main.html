@@ -3,17 +3,24 @@
 <head>
   <title>Kylita</title>
   <style>
-    body {
+    html, body {
+      height: 100%;
       margin: 0;
       font-family: Arial, sans-serif;
       background: linear-gradient(to bottom, #2c2c2c, #4b4b4b);
       color: white;
+    }
+    body {
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
     }
     header {
       display: flex;
       justify-content: space-between;
       align-items: center;
       padding: 20px;
+      flex-shrink: 0;
     }
     #logo {
       font-size: 36px;
@@ -30,6 +37,8 @@
       grid-template-columns: repeat(3, 1fr);
       gap: 20px;
       padding: 20px;
+      flex-grow: 1;
+      box-sizing: border-box;
     }
     .playlist-box {
       background: #3a3a3a;
@@ -37,10 +46,11 @@
       border-radius: 15px;
       text-align: center;
       cursor: pointer;
+      user-select: none;
     }
     #createBtn {
       display: block;
-      margin: 30px auto;
+      margin: 10px auto 30px auto;
       background: orange;
       border: none;
       padding: 15px 30px;
@@ -49,14 +59,16 @@
       font-weight: bold;
       color: white;
       cursor: pointer;
+      flex-shrink: 0;
     }
     #nowPlaying {
       background: orange;
       border-radius: 15px;
-      margin: 20px;
+      margin: 0 20px 20px 20px;
       padding: 15px;
       text-align: center;
       font-weight: bold;
+      flex-shrink: 0;
     }
     .bottom-bar {
       position: fixed;
@@ -66,6 +78,7 @@
       display: flex;
       justify-content: space-around;
       padding: 10px 0;
+      flex-shrink: 0;
     }
     .bottom-bar button {
       background: orange;
@@ -85,19 +98,23 @@
       padding: 30px;
       border-radius: 20px;
       color: black;
-      z-index: 999;
+      z-index: 9999;
       display: none;
+      min-width: 300px;
+      box-sizing: border-box;
     }
     .popup h2 { margin-top: 0; }
     .popup ul {
       list-style: none;
       padding: 0;
       margin-top: 20px;
+      max-height: 200px;
+      overflow-y: auto;
     }
     .popup ul li {
       margin: 5px 0;
     }
-    .popup .closeBtn, .popup .playBtn {
+    .popup .closeBtn, .popup .playBtn, .popup .saveBtn {
       margin-top: 10px;
       padding: 10px;
       background: #fff;
@@ -105,6 +122,22 @@
       border-radius: 10px;
       font-weight: bold;
       cursor: pointer;
+      min-width: 80px;
+    }
+    /* Popup spécifique création playlist */
+    #createPlaylistPopup input[type="text"] {
+      width: 100%;
+      padding: 10px;
+      font-size: 16px;
+      border-radius: 10px;
+      border: none;
+      margin-top: 15px;
+      box-sizing: border-box;
+    }
+    #createPlaylistPopup .buttonRow {
+      margin-top: 20px;
+      display: flex;
+      justify-content: space-between;
     }
   </style>
 </head>
@@ -125,20 +158,39 @@
     <button onclick="location.href='search.html'">Rechercher</button>
   </div>
 
+  <!-- Popup détails playlist -->
   <div class="popup" id="playlistPopup">
     <h2 id="popupTitle">Nom de la playlist</h2>
     <button class="playBtn">▶ Lancer</button>
-    <button class="closeBtn" onclick="closePopup()">Fermer</button>
+    <button class="closeBtn" onclick="closePlaylistPopup()">Fermer</button>
     <ul id="popupTracks"></ul>
+  </div>
+
+  <!-- Popup création playlist -->
+  <div class="popup" id="createPlaylistPopup">
+    <h2>Créer une playlist</h2>
+    <input type="text" id="newPlaylistName" placeholder="Nom de la playlist" />
+    <div class="buttonRow">
+      <button class="saveBtn" id="savePlaylistBtn">Créer</button>
+      <button class="closeBtn" id="cancelCreateBtn">Annuler</button>
+    </div>
   </div>
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-app.js";
-    import { getDatabase, ref, get, child, set } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-database.js";
+    import { getDatabase, ref, get, set } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-database.js";
     import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-auth.js";
 
+    // Ta config Firebase
     const firebaseConfig = {
-      // Tes infos Firebase ici
+      apiKey: "AIzaSyDyWu4TI4PIRXfeb7yqt0WIGClgu10IjkM",
+      authDomain: "kylita-f2923.firebaseapp.com",
+      databaseURL: "https://kylita-f2923-default-rtdb.firebaseio.com",
+      projectId: "kylita-f2923",
+      storageBucket: "kylita-f2923.firebasestorage.app",
+      messagingSenderId: "431823530994",
+      appId: "1:431823530994:web:88a07e633751686e5ad96b",
+      measurementId: "G-F4LLNWQJ16"
     };
 
     const app = initializeApp(firebaseConfig);
@@ -147,14 +199,19 @@
 
     const userBox = document.getElementById('userBox');
     const playlistsDiv = document.getElementById('playlists');
+    const createBtn = document.getElementById('createBtn');
+    const playlistPopup = document.getElementById('playlistPopup');
+    const createPlaylistPopup = document.getElementById('createPlaylistPopup');
+    const newPlaylistNameInput = document.getElementById('newPlaylistName');
+    const savePlaylistBtn = document.getElementById('savePlaylistBtn');
+    const cancelCreateBtn = document.getElementById('cancelCreateBtn');
     let playlists = [];
     let userId;
 
-    function closePopup() {
-      document.getElementById("playlistPopup").style.display = "none";
+    function closePlaylistPopup() {
+      playlistPopup.style.display = "none";
     }
-
-    function openPopup(name, tracks) {
+    function openPlaylistPopup(name, tracks) {
       document.getElementById("popupTitle").innerText = name;
       const list = document.getElementById("popupTracks");
       list.innerHTML = "";
@@ -163,7 +220,7 @@
         li.innerText = track;
         list.appendChild(li);
       });
-      document.getElementById("playlistPopup").style.display = "block";
+      playlistPopup.style.display = "block";
     }
 
     function refreshPlaylists() {
@@ -173,9 +230,10 @@
         div.className = 'playlist-box';
         if (playlists[i]) {
           div.innerText = playlists[i].name;
-          div.onclick = () => openPopup(playlists[i].name, playlists[i].tracks || []);
+          div.onclick = () => openPlaylistPopup(playlists[i].name, playlists[i].tracks || []);
         } else {
           div.innerText = 'Emplacement vide';
+          div.style.cursor = 'default';
         }
         playlistsDiv.appendChild(div);
       }
@@ -191,27 +249,45 @@
             userBox.innerText = userData.name || user.email;
             playlists = userData.playlists || [];
             refreshPlaylists();
+          } else {
+            userBox.innerText = user.email;
+            playlists = [];
+            refreshPlaylists();
           }
         });
+      } else {
+        userBox.innerText = "Non connecté";
+        playlists = [];
+        refreshPlaylists();
       }
     });
 
-    document.getElementById("createBtn").onclick = () => {
-      if (!userId) return alert("Utilisateur non connecté");
-      const name = prompt("Nom de la playlist :");
-      if (name) {
-        if (playlists.length >= 6) {
-          alert("Limite de 6 playlists atteinte");
-          return;
-        }
-        const newPlaylist = { name: name, tracks: [] };
-        playlists.push(newPlaylist);
-        refreshPlaylists();
-        // Enregistre dans Firebase
-        set(ref(db, `users/${userId}/playlists`), playlists);
+    createBtn.onclick = () => {
+      newPlaylistNameInput.value = "";
+      createPlaylistPopup.style.display = "block";
+      newPlaylistNameInput.focus();
+    }
+
+    cancelCreateBtn.onclick = () => {
+      createPlaylistPopup.style.display = "none";
+    }
+
+    savePlaylistBtn.onclick = () => {
+      const name = newPlaylistNameInput.value.trim();
+      if (!name) {
+        alert("Veuillez entrer un nom valide.");
+        return;
       }
+      // Ajouter la playlist localement
+      playlists.push({name: name, tracks: []});
+      // Enregistrer dans Firebase
+      set(ref(db, `users/${userId}/playlists`), playlists).then(() => {
+        refreshPlaylists();
+        createPlaylistPopup.style.display = "none";
+      }).catch(err => {
+        alert("Erreur lors de la sauvegarde : " + err.message);
+      });
     }
   </script>
 </body>
 </html>
-
