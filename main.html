@@ -152,7 +152,8 @@
 
         const answer = await peerConnection.createAnswer();
         await peerConnection.setLocalDescription(answer);
-        await freqRef.child('answer').set(answer.toJSON());
+        await freqRef.child('answer').set(answer); 
+
         log('Réponse envoyée.');
 
         // Ajout candidats en attente
