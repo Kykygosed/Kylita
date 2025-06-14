@@ -1,178 +1,251 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-  <meta charset="UTF-8">
-  <title>Radio Fréquence</title>
-  <style>
-    body {
-      font-family: sans-serif;
-      background: #121212;
-      color: white;
-      text-align: center;
-      padding: 30px;
-    }
-    select, input, button {
-      margin: 10px;
-      padding: 10px;
-    }
-  </style>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Radio Fréquence WebRTC</title>
+<style>
+  body { font-family: Arial, sans-serif; background: #222; color: white; margin: 0; padding: 20px; }
+  label, select, input, button { font-size: 1rem; margin: 5px 0; }
+  #log { height: 150px; overflow-y: auto; background: #111; padding: 10px; border-radius: 5px; }
+</style>
 </head>
 <body>
-  <h1>🎧 Fréquence Radio</h1>
-  <input type="text" id="frequencyInput" placeholder="Entrez une fréquence..." />
-  <br>
-  <select id="audioInputSelect"></select>
-  <select id="audioOutputSelect"></select>
-  <br>
-  <button id="joinBtn">Rejoindre la fréquence</button>
-  <br><br>
-  <audio id="remoteAudio" autoplay></audio>
 
-  <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-database-compat.js"></script>
-  <script>
-    // --- Config Firebase ---
-    const firebaseConfig = {
-      apiKey: "AIzaSyDyWu4TI4PIRXfeb7yqt0WIGClgu10IjkM",
-      authDomain: "kylita-f2923.firebaseapp.com",
-      databaseURL: "https://kylita-f2923-default-rtdb.firebaseio.com",
-      projectId: "kylita-f2923",
-      storageBucket: "kylita-f2923.appspot.com",
-      messagingSenderId: "431823530994",
-      appId: "1:431823530994:web:88a07e633751686e5ad96b",
-      measurementId: "G-F4LLNWQJ16"
+<h1>Radio Fréquence WebRTC</h1>
+
+<label for="frequency">Entrez votre fréquence (ex: 12380 pour 123.80 MHz):</label><br />
+<input type="text" id="frequency" placeholder="Ex: 12380" />
+<button id="joinBtn">Rejoindre la fréquence</button>
+
+<hr />
+
+<label for="inputDevice">Microphone:</label>
+<select id="inputDevice"></select><br />
+
+<label for="outputDevice">Sortie audio:</label>
+<select id="outputDevice"></select><br />
+
+<button id="muteBtn">Mute / Unmute Micro</button>
+
+<hr />
+
+<div id="log"></div>
+
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+
+<script>
+  // ======= CONFIG FIREBASE =======
+  const firebaseConfig = {
+    apiKey: "AIzaSyDyWu4TI4PIRXfeb7yqt0WIGClgu10IjkM",
+    authDomain: "kylita-f2923.firebaseapp.com",
+    databaseURL: "https://kylita-f2923-default-rtdb.firebaseio.com",
+    projectId: "kylita-f2923",
+    storageBucket: "kylita-f2923.firebasestorage.app",
+    messagingSenderId: "431823530994",
+    appId: "1:431823530994:web:88a07e633751686e5ad96b",
+    measurementId: "G-F4LLNWQJ16"
+  };
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.database();
+
+  // ======= Variables =======
+  let pc;
+  let localStream;
+  let frequencyRef;
+  let myId = Math.random().toString(36).substring(2, 10);
+  let remoteStreams = {};
+  let isMuted = false;
+
+  // Gérer les logs
+  const logDiv = document.getElementById('log');
+  function log(msg) {
+    console.log(msg);
+    const p = document.createElement('p');
+    p.textContent = msg;
+    logDiv.appendChild(p);
+    logDiv.scrollTop = logDiv.scrollHeight;
+  }
+
+  // ======= Gestion des périphériques =======
+  const inputSelect = document.getElementById('inputDevice');
+  const outputSelect = document.getElementById('outputDevice');
+
+  async function updateDevices() {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+
+    inputSelect.innerHTML = '';
+    outputSelect.innerHTML = '';
+
+    devices.forEach(device => {
+      const option = document.createElement('option');
+      option.value = device.deviceId;
+      option.text = device.label || (device.kind === 'audioinput' ? 'Microphone' : 'Haut-parleur');
+      if (device.kind === 'audioinput') {
+        inputSelect.appendChild(option);
+      }
+      if (device.kind === 'audiooutput') {
+        outputSelect.appendChild(option);
+      }
+    });
+  }
+
+  inputSelect.onchange = async () => {
+    if (localStream) {
+      const audioTrack = localStream.getAudioTracks()[0];
+      if (audioTrack) audioTrack.stop();
+      const newStream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: inputSelect.value } });
+      localStream.removeTrack(audioTrack);
+      localStream.addTrack(newStream.getAudioTracks()[0]);
+      pc.getSenders().forEach(sender => {
+        if (sender.track.kind === 'audio') {
+          sender.replaceTrack(localStream.getAudioTracks()[0]);
+        }
+      });
+    }
+  };
+
+  outputSelect.onchange = () => {
+    setOutputDevice(outputSelect.value);
+  };
+
+  async function setOutputDevice(deviceId) {
+    const audios = document.querySelectorAll('audio');
+    audios.forEach(audio => {
+      if (typeof audio.setSinkId !== 'undefined') {
+        audio.setSinkId(deviceId).catch(e => log('Erreur sortie audio: ' + e));
+      }
+    });
+  }
+
+  // ======= WebRTC =======
+  const servers = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+
+  // Stocker candidats reçus avant setRemoteDescription
+  let pendingCandidates = [];
+  let remoteDescSet = false;
+
+  async function startConnection(freq) {
+    log('Initialisation de la connexion sur fréquence: ' + freq);
+
+    frequencyRef = db.ref('frequencies/' + freq);
+
+    pc = new RTCPeerConnection(servers);
+
+    pc.onicecandidate = event => {
+      if (event.candidate) {
+        frequencyRef.child('candidates/' + myId).push(event.candidate.toJSON());
+      }
     };
-    firebase.initializeApp(firebaseConfig);
-    const db = firebase.database();
 
-    // --- Variables ---
-    const userId = Math.random().toString(36).substring(2, 9);
-    let currentFrequency = '';
-    let localStream;
-    let peerConnections = {};
+    pc.ontrack = event => {
+      if (!remoteStreams[event.streams[0].id]) {
+        remoteStreams[event.streams[0].id] = event.streams[0];
+        const audio = document.createElement('audio');
+        audio.srcObject = event.streams[0];
+        audio.autoplay = true;
+        audio.controls = false;
+        document.body.appendChild(audio);
+        setOutputDevice(outputSelect.value);
+        log('Stream distant reçu');
+      }
+    };
 
-    // --- Sélecteurs ---
-    const inputSelect = document.getElementById("audioInputSelect");
-    const outputSelect = document.getElementById("audioOutputSelect");
-    const remoteAudio = document.getElementById("remoteAudio");
+    localStream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: inputSelect.value || undefined } });
+    localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
 
-    navigator.mediaDevices.enumerateDevices().then(devices => {
-      devices.forEach(device => {
-        if (device.kind === "audioinput") {
-          const option = document.createElement("option");
-          option.value = device.deviceId;
-          option.text = device.label || `Microphone ${inputSelect.length + 1}`;
-          inputSelect.appendChild(option);
-        } else if (device.kind === "audiooutput") {
-          const option = document.createElement("option");
-          option.value = device.deviceId;
-          option.text = device.label || `Haut-parleur ${outputSelect.length + 1}`;
-          outputSelect.appendChild(option);
+    // Ecoute des candidates sur Firebase
+    frequencyRef.child('candidates').on('child_added', async snapshot => {
+      const peerId = snapshot.key;
+      if (peerId === myId) return; // Ignorer ses propres candidats
+      snapshot.ref.on('child_added', async cSnapshot => {
+        const candidate = new RTCIceCandidate(cSnapshot.val());
+        if (remoteDescSet) {
+          try {
+            await pc.addIceCandidate(candidate);
+            log('ICE candidate ajouté');
+          } catch (e) {
+            log('Erreur addIceCandidate: ' + e);
+          }
+        } else {
+          pendingCandidates.push(candidate);
+          log('ICE candidate en attente');
         }
       });
     });
 
-    // Appliquer sortie audio
-    outputSelect.addEventListener("change", () => {
-      if (typeof remoteAudio.setSinkId === "function") {
-        remoteAudio.setSinkId(outputSelect.value).catch(err => console.error("Erreur setSinkId", err));
+    // Créer une offre et publier sur Firebase
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    await frequencyRef.child('offers/' + myId).set(offer.toJSON());
+
+    // Ecoute des offres des autres
+    frequencyRef.child('offers').on('child_added', async snap => {
+      const id = snap.key;
+      if (id === myId) return; // Ignorer sa propre offre
+
+      const offerDesc = snap.val();
+      if (!remoteDescSet) {
+        log('Offre reçue de ' + id);
+        await pc.setRemoteDescription(new RTCSessionDescription(offerDesc));
+        remoteDescSet = true;
+
+        // Ajouter candidats en attente
+        for (const c of pendingCandidates) {
+          await pc.addIceCandidate(c).catch(e => log('Erreur ajout candidat en attente: ' + e));
+        }
+        pendingCandidates = [];
+
+        // Créer une réponse
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        await frequencyRef.child('answers/' + myId).set(answer.toJSON());
       }
     });
 
-    // Rejoindre une fréquence
-    document.getElementById("joinBtn").addEventListener("click", async () => {
-      currentFrequency = document.getElementById("frequencyInput").value.trim();
-      if (!currentFrequency) return alert("Entrez une fréquence.");
+    // Ecoute des réponses
+    frequencyRef.child('answers').on('child_added', async snap => {
+      const id = snap.key;
+      if (id !== myId) return; // On ne traite que sa propre réponse
+      const answerDesc = snap.val();
+      if (!remoteDescSet) {
+        await pc.setRemoteDescription(new RTCSessionDescription(answerDesc));
+        remoteDescSet = true;
 
-      localStream = await navigator.mediaDevices.getUserMedia({
-        audio: { deviceId: inputSelect.value ? { exact: inputSelect.value } : undefined }
-      });
-
-      const freqRef = db.ref(`frequencies/${currentFrequency}`);
-      const usersRef = freqRef.child("users");
-
-      usersRef.on("child_added", async snap => {
-        const otherId = snap.key;
-        if (otherId === userId) return;
-
-        const pc = createPeerConnection(otherId);
-        peerConnections[otherId] = pc;
-
-        localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
-
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-
-        setTimeout(() => {
-          db.ref(`frequencies/${currentFrequency}/offers/${userId}/${otherId}`).set(pc.localDescription.toJSON());
-        }, 500);
-      });
-
-      db.ref(`frequencies/${currentFrequency}/offers`).on("child_added", snap => {
-        const fromId = snap.key;
-        if (fromId === userId) return;
-
-        db.ref(`frequencies/${currentFrequency}/offers/${fromId}/${userId}`).on("value", async snap => {
-          if (!snap.exists()) return;
-          const offer = new RTCSessionDescription(snap.val());
-
-          const pc = createPeerConnection(fromId);
-          peerConnections[fromId] = pc;
-
-          localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
-
-          await pc.setRemoteDescription(offer);
-          const answer = await pc.createAnswer();
-          await pc.setLocalDescription(answer);
-
-          setTimeout(() => {
-            db.ref(`frequencies/${currentFrequency}/answers/${userId}/${fromId}`).set(pc.localDescription.toJSON());
-          }, 500);
-        });
-      });
-
-      db.ref(`frequencies/${currentFrequency}/answers`).on("child_added", snap => {
-        const fromId = snap.key;
-        if (fromId === userId) return;
-
-        db.ref(`frequencies/${currentFrequency}/answers/${fromId}/${userId}`).on("value", async snap => {
-          if (!snap.exists()) return;
-          const answer = new RTCSessionDescription(snap.val());
-          const pc = peerConnections[fromId];
-          if (!pc.currentRemoteDescription) {
-            await pc.setRemoteDescription(answer);
-          }
-        });
-      });
-
-      // S'inscrire
-      usersRef.child(userId).set(true);
-      usersRef.child(userId).onDisconnect().remove();
-    });
-
-    function createPeerConnection(remoteId) {
-      const pc = new RTCPeerConnection();
-
-      pc.ontrack = event => {
-        const remoteStream = new MediaStream();
-        remoteStream.addTrack(event.track);
-        remoteAudio.srcObject = remoteStream;
-      };
-
-      pc.onicecandidate = event => {
-        if (event.candidate) {
-          db.ref(`frequencies/${currentFrequency}/candidates/${userId}/${remoteId}`).push(event.candidate.toJSON());
+        // Ajouter candidats en attente
+        for (const c of pendingCandidates) {
+          await pc.addIceCandidate(c).catch(e => log('Erreur ajout candidat en attente: ' + e));
         }
-      };
+        pendingCandidates = [];
+      }
+    });
+  }
 
-      db.ref(`frequencies/${currentFrequency}/candidates/${remoteId}/${userId}`).on("child_added", snap => {
-        if (!snap.exists()) return;
-        pc.addIceCandidate(new RTCIceCandidate(snap.val()));
-      });
-
-      return pc;
+  // ======= UI =======
+  document.getElementById('joinBtn').onclick = async () => {
+    const freqRaw = document.getElementById('frequency').value.trim();
+    if (!freqRaw.match(/^\d+$/)) {
+      alert('Fréquence invalide. Utilisez uniquement des chiffres sans point ni virgule.');
+      return;
     }
-  </script>
+    await updateDevices();
+    await startConnection(freqRaw);
+  };
+
+  document.getElementById('muteBtn').onclick = () => {
+    if (!localStream) return;
+    isMuted = !isMuted;
+    localStream.getAudioTracks().forEach(track => track.enabled = !isMuted);
+    document.getElementById('muteBtn').textContent = isMuted ? 'Unmute Micro' : 'Mute Micro';
+  };
+
+  // Initialisation liste périphériques
+  updateDevices();
+
+</script>
+
 </body>
 </html>
+
 
