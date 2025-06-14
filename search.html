@@ -1,384 +1,123 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html>
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Kylita - Recherche</title>
+  <title>Recherche de musiques</title>
   <style>
-    html, body {
-      height: 100%;
+    body {
       margin: 0;
-      font-family: Arial, sans-serif;
-      background: linear-gradient(to bottom, #2c2c2c, #4b4b4b);
+      padding: 0;
+      background: linear-gradient(to bottom, #222, #444);
       color: white;
-      display: flex;
-      flex-direction: column;
+      font-family: sans-serif;
     }
-    header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 20px 40px;
-      flex-shrink: 0;
-    }
-    #logo {
-      font-size: 36px;
-      font-weight: bold;
-      cursor: default;
-    }
-    #userBox {
-      background: #3a3a3a;
-      padding: 10px 20px;
-      border-radius: 12px;
-      font-weight: bold;
-      user-select: none;
-    }
-    main {
-      flex-grow: 1;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      padding: 0 20px 40px 20px;
-      box-sizing: border-box;
-      overflow-y: auto;
-    }
-    #searchInput {
-      width: 100%;
-      max-width: 900px;
-      padding: 15px 20px;
-      font-size: 20px;
-      border-radius: 30px;
+
+    .search-bar {
+      width: 80%;
+      margin: 30px auto;
+      padding: 15px;
+      border-radius: 10px;
       border: none;
-      outline: none;
-      margin-top: 80px;
-      color: black;
+      font-size: 20px;
     }
-    #results {
-      width: 100%;
-      max-width: 900px;
-      margin-top: 25px;
-      display: flex;
-      flex-direction: column;
-      gap: 15px;
-    }
-    .result-item {
-      background: #2d65ff;
-      border-radius: 15px;
-      padding: 15px 20px;
+
+    .result {
+      background-color: #1e88e5;
+      border-radius: 12px;
+      margin: 10px auto;
+      padding: 15px;
+      width: 80%;
       cursor: pointer;
-      user-select: none;
-      transition: background 0.3s;
     }
-    .result-item:hover {
-      background: #1a44d7;
-    }
-    .title {
-      font-weight: bold;
-      font-size: 18px;
-      margin-bottom: 5px;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .artist {
-      font-weight: normal;
-      font-size: 14px;
-      opacity: 0.85;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    /* Popup */
+
     .popup {
       position: fixed;
       top: 50%;
       left: 50%;
       transform: translate(-50%, -50%);
-      background: #2d65ff;
-      padding: 30px;
-      border-radius: 20px;
-      color: white;
-      z-index: 9999;
+      background: #1e88e5;
+      border-radius: 15px;
+      padding: 20px;
       display: none;
-      min-width: 320px;
-      max-width: 90vw;
-      box-sizing: border-box;
-      box-shadow: 0 0 20px rgba(0,0,0,0.8);
+      z-index: 1000;
     }
-    .popup h2 {
-      margin: 0 0 20px 0;
-      font-size: 24px;
-      font-weight: bold;
-    }
-    .popup .artist {
-      margin-bottom: 25px;
-      font-size: 18px;
-    }
+
     .popup button {
-      cursor: pointer;
-      border: none;
       background: white;
-      color: #2d65ff;
-      font-weight: bold;
-      border-radius: 12px;
-      padding: 12px 25px;
-      font-size: 18px;
-      margin-right: 15px;
-      transition: background 0.3s, color 0.3s;
-    }
-    .popup button:hover {
-      background: #1a44d7;
-      color: white;
-    }
-    .popup .closeBtn {
-      background: transparent;
-      color: white;
-      font-weight: normal;
-      font-size: 20px;
-      position: absolute;
-      top: 10px;
-      right: 15px;
-      cursor: pointer;
+      color: #1e88e5;
       border: none;
-      padding: 0;
-      line-height: 1;
-      user-select: none;
-    }
-    /* Playlist add dropdown */
-    #playlistSelect {
-      margin-left: 10px;
-      padding: 6px 12px;
       border-radius: 10px;
-      border: none;
-      font-size: 16px;
-    }
-    /* Audio element hidden */
-    audio {
-      display: none;
+      padding: 10px 20px;
+      font-weight: bold;
+      cursor: pointer;
+      margin-right: 10px;
     }
   </style>
 </head>
 <body>
-  <header>
-    <div id="logo">Kylita</div>
-    <div id="userBox">Chargement...</div>
-  </header>
 
-  <main>
-    <input id="searchInput" type="search" placeholder="Rechercher une musique sur Audius..." autocomplete="off" />
-    <div id="results"></div>
-  </main>
+  <h1 style="text-align: center; font-size: 40px;">Kylita</h1>
+  <input type="text" class="search-bar" placeholder="Rechercher une musique..." oninput="searchMusic(this.value)" />
 
-  <!-- Popup détails morceau -->
-  <div class="popup" id="trackPopup">
-    <button class="closeBtn" title="Fermer">&times;</button>
-    <h2 id="trackTitle">Titre</h2>
-    <div class="artist" id="trackArtist">Artiste</div>
-    <button id="playPauseBtn">▶ Jouer</button>
-    <button id="addPlaylistBtn">Ajouter à la playlist</button>
-    <select id="playlistSelect" style="display:none;"></select>
+  <div id="results"></div>
+
+  <div class="popup" id="popup">
+    <h2 id="popupTitle"></h2>
+    <audio id="audioPlayer" controls style="width: 100%; margin-top: 15px;"></audio>
+    <div style="margin-top: 20px;">
+      <button onclick="closePopup()">Fermer</button>
+    </div>
   </div>
 
-  <audio id="audioPlayer"></audio>
+  <script>
+    let musics = [];
 
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-app.js";
-    import { getDatabase, ref, get, set } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-database.js";
-    import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-auth.js";
-
-    // Ta config Firebase
-    const firebaseConfig = {
-      apiKey: "AIzaSyDyWu4TI4PIRXfeb7yqt0WIGClgu10IjkM",
-      authDomain: "kylita-f2923.firebaseapp.com",
-      databaseURL: "https://kylita-f2923-default-rtdb.firebaseio.com",
-      projectId: "kylita-f2923",
-      storageBucket: "kylita-f2923.firebasestorage.app",
-      messagingSenderId: "431823530994",
-      appId: "1:431823530994:web:88a07e633751686e5ad96b",
-      measurementId: "G-F4LLNWQJ16"
-    };
-
-    const app = initializeApp(firebaseConfig);
-    const db = getDatabase(app);
-    const auth = getAuth();
-
-    const userBox = document.getElementById('userBox');
-    const searchInput = document.getElementById('searchInput');
-    const resultsDiv = document.getElementById('results');
-    const trackPopup = document.getElementById('trackPopup');
-    const trackTitle = document.getElementById('trackTitle');
-    const trackArtist = document.getElementById('trackArtist');
-    const playPauseBtn = document.getElementById('playPauseBtn');
-    const addPlaylistBtn = document.getElementById('addPlaylistBtn');
-    const playlistSelect = document.getElementById('playlistSelect');
-    const audioPlayer = document.getElementById('audioPlayer');
-    const closeBtn = trackPopup.querySelector('.closeBtn');
-
-    let userId = null;
-    let userPlaylists = [];
-    let currentTrack = null;
-    let isPlaying = false;
-
-    // Affiche le compte connecté
-    onAuthStateChanged(auth, user => {
-      if (user) {
-        userId = user.uid;
-        userBox.textContent = user.email || user.displayName || "Utilisateur";
-        loadUserPlaylists();
-      } else {
-        userBox.textContent = "Non connecté";
-      }
-    });
-
-    // Charge playlists utilisateur depuis Firebase
-    function loadUserPlaylists() {
-      if (!userId) return;
-      get(ref(db, `users/${userId}/playlists`)).then(snapshot => {
-        userPlaylists = snapshot.val() || [];
-        // Remplir le select
-        playlistSelect.innerHTML = "";
-        if(userPlaylists.length === 0){
-          playlistSelect.style.display = "none";
-          addPlaylistBtn.disabled = true;
-          addPlaylistBtn.textContent = "Aucune playlist disponible";
-        } else {
-          playlistSelect.style.display = "inline-block";
-          addPlaylistBtn.disabled = false;
-          addPlaylistBtn.textContent = "Ajouter à la playlist";
-          userPlaylists.forEach((pl, i) => {
-            const option = document.createElement('option');
-            option.value = i;
-            option.textContent = pl.name;
-            playlistSelect.appendChild(option);
-          });
-        }
-      }).catch(e => {
-        console.error("Erreur chargement playlists:", e);
+    fetch('musics.json')
+      .then(res => res.json())
+      .then(data => {
+        musics = data;
+        searchMusic(""); // Show all at first
       });
-    }
 
-    // Recherche avec Audius API
-    async function searchAudius(query) {
-      if (!query) {
-        resultsDiv.innerHTML = "";
+    function searchMusic(query) {
+      const results = document.getElementById('results');
+      results.innerHTML = '';
+
+      const filtered = musics.filter(m =>
+        m.title.toLowerCase().includes(query.toLowerCase())
+      );
+
+      if (filtered.length === 0) {
+        results.innerHTML = '<p style="text-align:center;">Aucun résultat</p>';
         return;
       }
-      try {
-        // endpoint recherche
-        const url = `https://discoveryprovider.audius.co/v1/search/tracks?query=${encodeURIComponent(query)}&limit=10`;
-        const res = await fetch(url);
-        const json = await res.json();
-        // console.log(json);
-        if(json.data){
-          displayResults(json.data);
-        } else {
-          resultsDiv.innerHTML = "<i>Aucun résultat</i>";
-        }
-      } catch(e) {
-        resultsDiv.innerHTML = "<i>Erreur API</i>";
-      }
-    }
 
-    // Affiche les résultats
-    function displayResults(tracks) {
-      resultsDiv.innerHTML = "";
-      tracks.forEach(track => {
+      filtered.forEach(music => {
         const div = document.createElement('div');
-        div.className = "result-item";
-        div.title = `${track.title} - ${track.user.name}`;
-        div.innerHTML = `
-          <div class="title">${track.title}</div>
-          <div class="artist">${track.user.name}</div>
-        `;
-        div.onclick = () => openTrackPopup(track);
-        resultsDiv.appendChild(div);
+        div.className = 'result';
+        div.innerHTML = `<strong>${music.title}</strong><br><span>${music.file}</span>`;
+        div.onclick = () => openPopup(music);
+        results.appendChild(div);
       });
     }
 
-    // Ouvre popup track
-    function openTrackPopup(track) {
-      currentTrack = track;
-      trackTitle.textContent = track.title;
-      trackArtist.textContent = track.user.name;
-      playPauseBtn.textContent = "▶ Jouer";
-      isPlaying = false;
-      audioPlayer.pause();
-      audioPlayer.src = track.download ? track.download : track.preview ? track.preview : track.stream_url ? track.stream_url : null;
-      if(!audioPlayer.src) {
-        // fallback sur preview url + ajouter paramètre
-        if(track.preview){
-          audioPlayer.src = track.preview;
-        } else if(track.stream_url) {
-          audioPlayer.src = track.stream_url;
-        } else {
-          audioPlayer.src = "";
-        }
-      }
-      trackPopup.style.display = "block";
+    function openPopup(music) {
+      const popup = document.getElementById('popup');
+      document.getElementById('popupTitle').textContent = music.title;
+
+      const audio = document.getElementById('audioPlayer');
+      audio.src = music.file;
+      audio.play();
+
+      popup.style.display = 'block';
     }
 
-    // Bouton play/pause
-    playPauseBtn.onclick = () => {
-      if (!audioPlayer.src) return alert("Aucun flux audio disponible pour ce morceau.");
-      if (isPlaying) {
-        audioPlayer.pause();
-        playPauseBtn.textContent = "▶ Jouer";
-      } else {
-        audioPlayer.play();
-        playPauseBtn.textContent = "⏸ Pause";
-      }
-      isPlaying = !isPlaying;
-    };
-
-    // Bouton fermer popup
-    closeBtn.onclick = () => {
-      audioPlayer.pause();
-      isPlaying = false;
-      trackPopup.style.display = "none";
-    };
-
-    // Bouton ajouter à playlist
-    addPlaylistBtn.onclick = () => {
-      if(userPlaylists.length === 0) {
-        alert("Vous n'avez aucune playlist. Créez-en une d'abord depuis la page principale.");
-        return;
-      }
-      const selectedIndex = playlistSelect.value;
-      if(selectedIndex === null) return;
-
-      const playlist = userPlaylists[selectedIndex];
-      if(!playlist.tracks) playlist.tracks = [];
-
-      // Vérifier doublon par id Audius
-      if(playlist.tracks.find(t => t.id === currentTrack.id)) {
-        alert("Ce morceau est déjà dans la playlist.");
-        return;
-      }
-
-      playlist.tracks.push({
-        id: currentTrack.id,
-        title: currentTrack.title,
-        artist: currentTrack.user.name,
-        streamUrl: currentTrack.stream_url || currentTrack.preview || null
-      });
-
-      // Enregistrer dans Firebase
-      set(ref(db, `users/${userId}/playlists`), userPlaylists).then(() => {
-        alert(`Morceau ajouté à la playlist "${playlist.name}" !`);
-      }).catch(e => {
-        alert("Erreur lors de l'ajout : " + e.message);
-      });
-    };
-
-    // Recherche en temps réel au tap
-    let searchTimeout = null;
-    searchInput.addEventListener('input', () => {
-      clearTimeout(searchTimeout);
-      searchTimeout = setTimeout(() => {
-        searchAudius(searchInput.value.trim());
-      }, 300);
-    });
-
+    function closePopup() {
+      const popup = document.getElementById('popup');
+      const audio = document.getElementById('audioPlayer');
+      audio.pause();
+      popup.style.display = 'none';
+    }
   </script>
+
 </body>
 </html>
