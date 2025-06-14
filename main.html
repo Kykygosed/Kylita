@@ -210,7 +210,7 @@
         const answer = await peerConnection.createAnswer();
         await peerConnection.setLocalDescription(answer);
 
-        await roomRef.child('answer').set(answer.toJSON());
+        await roomRef.child('answer').set(answer);
 
         listenCandidates();
       } else {
@@ -218,7 +218,7 @@
         const offer = await peerConnection.createOffer();
         await peerConnection.setLocalDescription(offer);
 
-        await roomRef.child('offer').set(offer.toJSON());
+        await roomRef.child('offer').set(offer);
 
         listenCandidates();
       }
