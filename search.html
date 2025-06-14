@@ -1,123 +1,144 @@
 <!DOCTYPE html>
-<html>
+<html lang="fr">
 <head>
-  <title>Recherche de musiques</title>
-  <style>
-    body {
-      margin: 0;
-      padding: 0;
-      background: linear-gradient(to bottom, #222, #444);
-      color: white;
-      font-family: sans-serif;
-    }
-
-    .search-bar {
-      width: 80%;
-      margin: 30px auto;
-      padding: 15px;
-      border-radius: 10px;
-      border: none;
-      font-size: 20px;
-    }
-
-    .result {
-      background-color: #1e88e5;
-      border-radius: 12px;
-      margin: 10px auto;
-      padding: 15px;
-      width: 80%;
-      cursor: pointer;
-    }
-
-    .popup {
-      position: fixed;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      background: #1e88e5;
-      border-radius: 15px;
-      padding: 20px;
-      display: none;
-      z-index: 1000;
-    }
-
-    .popup button {
-      background: white;
-      color: #1e88e5;
-      border: none;
-      border-radius: 10px;
-      padding: 10px 20px;
-      font-weight: bold;
-      cursor: pointer;
-      margin-right: 10px;
-    }
-  </style>
+<meta charset="UTF-8" />
+<title>Search - Kylita</title>
+<style>
+  body {
+    margin:0; padding:0; height:100vh;
+    background: linear-gradient(to bottom, #222, #555);
+    font-family: Arial, sans-serif;
+    color: white;
+  }
+  header {
+    display:flex; justify-content: space-between; padding: 10px 20px;
+    background: #111;
+    font-weight: bold; font-size: 1.5em;
+  }
+  #searchBar {
+    width: 100%;
+    padding: 15px;
+    font-size: 1.2em;
+    border: none;
+    border-radius: 5px;
+    margin: 20px 0;
+  }
+  .result {
+    background: #1464f4;
+    margin: 10px;
+    border-radius: 10px;
+    padding: 10px;
+    cursor: pointer;
+  }
+  .result b {
+    font-weight: bold;
+  }
+  #playerPopup {
+    position: fixed;
+    top: 20%; left: 50%; transform: translateX(-50%);
+    background: #1464f4;
+    padding: 20px;
+    border-radius: 15px;
+    display: none;
+    color: white;
+  }
+  button {
+    background: orange;
+    border: none;
+    padding: 10px;
+    border-radius: 10px;
+    cursor: pointer;
+    font-weight: bold;
+  }
+</style>
 </head>
 <body>
 
-  <h1 style="text-align: center; font-size: 40px;">Kylita</h1>
-  <input type="text" class="search-bar" placeholder="Rechercher une musique..." oninput="searchMusic(this.value)" />
+<header>
+  <div>Kylita</div>
+  <div id="username">MonCompte</div>
+</header>
 
-  <div id="results"></div>
+<input type="text" id="searchBar" placeholder="Rechercher un son..." />
 
-  <div class="popup" id="popup">
-    <h2 id="popupTitle"></h2>
-    <audio id="audioPlayer" controls style="width: 100%; margin-top: 15px;"></audio>
-    <div style="margin-top: 20px;">
-      <button onclick="closePopup()">Fermer</button>
-    </div>
-  </div>
+<div id="results"></div>
 
-  <script>
-    let musics = [];
+<div id="playerPopup">
+  <div id="playerTitle"></div>
+  <audio id="audioPlayer" controls></audio><br />
+  <button id="addToPlaylistBtn">Ajouter à une playlist</button>
+  <button id="closePopupBtn">Fermer</button>
+</div>
 
-    fetch('musics.json')
-      .then(res => res.json())
-      .then(data => {
-        musics = data;
-        searchMusic(""); // Show all at first
-      });
-
-    function searchMusic(query) {
-      const results = document.getElementById('results');
-      results.innerHTML = '';
-
-      const filtered = musics.filter(m =>
-        m.title.toLowerCase().includes(query.toLowerCase())
-      );
-
-      if (filtered.length === 0) {
-        results.innerHTML = '<p style="text-align:center;">Aucun résultat</p>';
-        return;
-      }
-
-      filtered.forEach(music => {
-        const div = document.createElement('div');
-        div.className = 'result';
-        div.innerHTML = `<strong>${music.title}</strong><br><span>${music.file}</span>`;
-        div.onclick = () => openPopup(music);
-        results.appendChild(div);
-      });
+<script>
+  // Liste statique des sons disponibles (à mettre à jour manuellement)
+  const songs = [
+    {
+      title: "DJ Got Us Falling In Love",
+      author: "Usher ft Pitbull",
+      url: "https://kykygosed.github.io/Kylita/dj_got_us_falling_in_love.mp3"
+    },
+    {
+      title: "Another Song",
+      author: "Un Artiste",
+      url: "https://kykygosed.github.io/Kylita/another_song.mp3"
     }
+    // Ajoute ici tes fichiers avec urls complètes
+  ];
 
-    function openPopup(music) {
-      const popup = document.getElementById('popup');
-      document.getElementById('popupTitle').textContent = music.title;
+  const searchBar = document.getElementById("searchBar");
+  const resultsDiv = document.getElementById("results");
+  const playerPopup = document.getElementById("playerPopup");
+  const playerTitle = document.getElementById("playerTitle");
+  const audioPlayer = document.getElementById("audioPlayer");
+  const addToPlaylistBtn = document.getElementById("addToPlaylistBtn");
+  const closePopupBtn = document.getElementById("closePopupBtn");
 
-      const audio = document.getElementById('audioPlayer');
-      audio.src = music.file;
-      audio.play();
+  let currentSong = null;
 
-      popup.style.display = 'block';
+  function displayResults(filteredSongs) {
+    resultsDiv.innerHTML = "";
+    if (filteredSongs.length === 0) {
+      resultsDiv.textContent = "Aucun résultat";
+      return;
     }
+    filteredSongs.forEach(song => {
+      const div = document.createElement("div");
+      div.className = "result";
+      div.innerHTML = `<b>${song.title}</b><br>${song.author}`;
+      div.onclick = () => openPlayerPopup(song);
+      resultsDiv.appendChild(div);
+    });
+  }
 
-    function closePopup() {
-      const popup = document.getElementById('popup');
-      const audio = document.getElementById('audioPlayer');
-      audio.pause();
-      popup.style.display = 'none';
-    }
-  </script>
+  function openPlayerPopup(song) {
+    currentSong = song;
+    playerTitle.textContent = `${song.title} - ${song.author}`;
+    audioPlayer.src = song.url;
+    playerPopup.style.display = "block";
+    audioPlayer.pause();
+    audioPlayer.load();
+  }
+
+  closePopupBtn.onclick = () => {
+    playerPopup.style.display = "none";
+    audioPlayer.pause();
+    audioPlayer.src = "";
+  };
+
+  addToPlaylistBtn.onclick = () => {
+    alert(`Ajouter "${currentSong.title}" à une playlist (à implémenter)`);
+  };
+
+  searchBar.addEventListener("input", () => {
+    const query = searchBar.value.toLowerCase();
+    const filtered = songs.filter(song => song.title.toLowerCase().includes(query));
+    displayResults(filtered);
+  });
+
+  // Affiche tout au début (sans filtre)
+  displayResults(songs);
+</script>
 
 </body>
 </html>
