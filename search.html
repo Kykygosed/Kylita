@@ -2,141 +2,60 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8" />
-<title>Search - Kylita</title>
+<title>Test Lecture Audio</title>
 <style>
-  body {
-    margin:0; padding:0; height:100vh;
-    background: linear-gradient(to bottom, #222, #555);
-    font-family: Arial, sans-serif;
-    color: white;
-  }
-  header {
-    display:flex; justify-content: space-between; padding: 10px 20px;
-    background: #111;
-    font-weight: bold; font-size: 1.5em;
-  }
-  #searchBar {
-    width: 100%;
-    padding: 15px;
-    font-size: 1.2em;
-    border: none;
-    border-radius: 5px;
-    margin: 20px 0;
-  }
-  .result {
-    background: #1464f4;
-    margin: 10px;
-    border-radius: 10px;
-    padding: 10px;
-    cursor: pointer;
-  }
-  .result b {
-    font-weight: bold;
-  }
-  #playerPopup {
-    position: fixed;
-    top: 20%; left: 50%; transform: translateX(-50%);
-    background: #1464f4;
-    padding: 20px;
-    border-radius: 15px;
-    display: none;
-    color: white;
-  }
-  button {
-    background: orange;
-    border: none;
-    padding: 10px;
-    border-radius: 10px;
-    cursor: pointer;
-    font-weight: bold;
-  }
+  body { background: #222; color: white; font-family: Arial, sans-serif; padding: 20px; }
+  #logs { margin-top: 20px; white-space: pre-wrap; background: #333; padding: 10px; border-radius: 8px; max-height: 200px; overflow-y: auto; }
+  button { font-size: 18px; padding: 10px 20px; border-radius: 10px; border: none; background: orange; color: black; cursor: pointer; }
+  button:disabled { background: #666; cursor: not-allowed; }
 </style>
 </head>
 <body>
 
-<header>
-  <div>Kylita</div>
-  <div id="username">MonCompte</div>
-</header>
+<h1>Test Lecture Audio - Kylita</h1>
+<button id="playBtn">▶️ Play musique</button>
 
-<input type="text" id="searchBar" placeholder="Rechercher un son..." />
+<audio id="audioPlayer" controls style="display:block; margin-top:20px;"></audio>
 
-<div id="results"></div>
-
-<div id="playerPopup">
-  <div id="playerTitle"></div>
-  <audio id="audioPlayer" controls></audio><br />
-  <button id="addToPlaylistBtn">Ajouter à une playlist</button>
-  <button id="closePopupBtn">Fermer</button>
-</div>
+<div id="logs">Logs :</div>
 
 <script>
-  // Liste statique des sons disponibles (à mettre à jour manuellement)
-  const songs = [
-    {
-      title: "DJ Got Us Falling In Love",
-      author: "Usher ft Pitbull",
-      url: "dj_got_us_falling_in_love.mp3"
-    },
-    {
-      title: "Another Song",
-      author: "Un Artiste",
-      url: "https://kykygosed.github.io/Kylita/another_song.mp3"
-    }
-    // Ajoute ici tes fichiers avec urls complètes
-  ];
+const audioPlayer = document.getElementById('audioPlayer');
+const playBtn = document.getElementById('playBtn');
+const logs = document.getElementById('logs');
 
-  const searchBar = document.getElementById("searchBar");
-  const resultsDiv = document.getElementById("results");
-  const playerPopup = document.getElementById("playerPopup");
-  const playerTitle = document.getElementById("playerTitle");
-  const audioPlayer = document.getElementById("audioPlayer");
-  const addToPlaylistBtn = document.getElementById("addToPlaylistBtn");
-  const closePopupBtn = document.getElementById("closePopupBtn");
+const audioUrl = "https://kykygosed.github.io/Kylita/dj_got_us_falling_in_love.mp3";
 
-  let currentSong = null;
-
-  function displayResults(filteredSongs) {
-    resultsDiv.innerHTML = "";
-    if (filteredSongs.length === 0) {
-      resultsDiv.textContent = "Aucun résultat";
-      return;
-    }
-    filteredSongs.forEach(song => {
-      const div = document.createElement("div");
-      div.className = "result";
-      div.innerHTML = `<b>${song.title}</b><br>${song.author}`;
-      div.onclick = () => openPlayerPopup(song);
-      resultsDiv.appendChild(div);
-    });
-  }
-
-function openPlayerPopup(song) {
-  currentSong = song;
-  playerTitle.textContent = `${song.title} - ${song.author}`;
-  audioPlayer.src = song.url;
-  playerPopup.style.display = "block";
-  audioPlayer.pause();
-  audioPlayer.load();
-  // Ne pas lancer automatiquement, attendre clic utilisateur
+function log(msg) {
+  console.log(msg);
+  logs.textContent += "\n" + msg;
+  logs.scrollTop = logs.scrollHeight;
 }
 
-document.getElementById('audioPlayer').addEventListener('play', () => {
-  console.log('Lecture commencée');
+// On prépare la source
+audioPlayer.src = audioUrl;
+log("Source audio définie : " + audioUrl);
+
+playBtn.addEventListener('click', () => {
+  log("Bouton play cliqué, tentative de lecture...");
+  audioPlayer.play()
+    .then(() => {
+      log("Lecture démarrée avec succès !");
+      playBtn.disabled = true;
+    })
+    .catch(err => {
+      log("Erreur de lecture : " + err.name + " - " + err.message);
+    });
 });
 
-// Ajouter un bouton play dans le popup (ou utiliser le player controls natif)
-
-
-  searchBar.addEventListener("input", () => {
-    const query = searchBar.value.toLowerCase();
-    const filtered = songs.filter(song => song.title.toLowerCase().includes(query));
-    displayResults(filtered);
-  });
-
-  // Affiche tout au début (sans filtre)
-  displayResults(songs);
+// Events audio pour débug
+audioPlayer.addEventListener('canplay', () => log("canplay : Le fichier est prêt à être joué."));
+audioPlayer.addEventListener('error', (e) => {
+  const err = e.target.error;
+  log(`Erreur audio event: code ${err.code}, message: ${err.message || "unknown"}`);
+});
 </script>
 
 </body>
 </html>
+
