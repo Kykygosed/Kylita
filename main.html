@@ -104,7 +104,6 @@
     </div>
     <input type="text" id="frequencyBox" maxlength="7" placeholder="000.000" oninput="formatFrequency(this)">
     <button id="joinBtn">Rejoindre</button>
-    <button id="playNoise">🔊 Noise</button>
   </div>
 
   <div id="microToggle" title="Activer / Désactiver le micro"><i id="micIcon">🎤</i><br><span id="micStatus">OFF</span></div>
@@ -391,43 +390,6 @@
         document.getElementById("outputSelect").selectedIndex = 0;
       }
     };
-    document.getElementById("playNoise").addEventListener("click", async () => {
-  const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-  const response = await fetch("noise.mp3");
-  const arrayBuffer = await response.arrayBuffer();
-  const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-  const source = audioContext.createBufferSource();
-  source.buffer = audioBuffer;
-
-  const destination = audioContext.createMediaStreamDestination();
-  source.connect(destination);
-  source.start();
-
-  const noiseStream = destination.stream;
-
-  for (const peerId in peers) {
-    const sender = peers[peerId]
-      .getSenders()
-      .find((s) => s.track.kind === "audio");
-    if (sender) {
-      sender.replaceTrack(noiseStream.getAudioTracks()[0]);
-    }
-  }
-
-  // Revenir au micro après la fin du son (~durée du mp3)
-  setTimeout(() => {
-    const micTrack = localStream.getAudioTracks()[0];
-    for (const peerId in peers) {
-      const sender = peers[peerId]
-        .getSenders()
-        .find((s) => s.track.kind === "audio");
-      if (sender) {
-        sender.replaceTrack(micTrack);
-      }
-    }
-  }, audioBuffer.duration * 1000);
-});
-
   </script>
 </body>
 </html>
