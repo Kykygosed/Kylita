@@ -1,24 +1,17 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html>
 <head>
-  <meta charset="UTF-8" />
-  <title>Radio WebRTC</title>
+  <meta charset="UTF-8">
+  <title>Radio Fréquence</title>
   <style>
-    /* (identique à ton style existant) */
     body {
-      background-color: #555;
-      color: white;
-      font-family: Arial, sans-serif;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      height: 100vh;
       margin: 0;
+      background-color: #000;
+      color: white;
+      font-family: sans-serif;
     }
-    #volumeBarContainer {
+    #volumeBarContainer, #incomingBarContainer {
       position: fixed;
-      left: 10px;
       top: 50%;
       transform: translateY(-50%);
       width: 20px;
@@ -28,101 +21,26 @@
       border-radius: 10px;
       overflow: hidden;
     }
-    #volumeBar {
+    #volumeBarContainer { left: 10px; }
+    #incomingBarContainer { right: 10px; }
+    #volumeBar, #incomingBar {
       width: 100%;
       height: 0%;
-      background-color: limegreen;
       transition: height 0.1s ease;
     }
-    select, input {
-      font-size: 16px;
-      padding: 5px;
-      margin: 5px;
-    }
-    #frequencyBox {
-      font-size: 48px;
-      font-weight: bold;
-      background: #111;
-      border: 5px solid orange;
-      color: white;
-      padding: 10px 30px;
-      border-radius: 8px;
-      margin: 10px;
-      text-align: center;
-      font-style: italic;
-    }
-    #joinBtn {
-      background-color: green;
-      color: white;
-      border: none;
-      border-radius: 50%;
-      width: 100px;
-      height: 100px;
-      font-size: 18px;
-      font-weight: bold;
-      cursor: pointer;
-      margin-top: 20px;
-    }
-    #microToggle {
-      position: fixed;
-      right: 30px;
-      bottom: 40%;
-      text-align: center;
-      font-size: 14px;
-      color: white;
-    }
-    #microToggle i {
-      font-size: 30px;
-    }
-    #incomingBarContainer {
-  position: fixed;
-  right: 10px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 20px;
-  height: 200px;
-  background-color: #333;
-  border: 2px solid #777;
-  border-radius: 10px;
-  overflow: hidden;
-}
-#incomingBar {
-  width: 100%;
-  height: 0%;
-  background-color: cyan;
-  transition: height 0.1s ease;
-}
-
+    #volumeBar { background-color: lime; }
+    #incomingBar { background-color: cyan; }
   </style>
 </head>
 <body>
   <div id="volumeBarContainer"><div id="volumeBar"></div></div>
   <div id="incomingBarContainer"><div id="incomingBar"></div></div>
 
-
-  <div>
-    <div style="text-align: center;">
-      <p><em>PÉRIPHÉRIQUE ENTRÉE</em></p>
-      <select id="inputSelect"></select>
-      <p><em>PÉRIPHÉRIQUE SORTIE</em></p>
-      <select id="outputSelect"></select>
-    </div>
-
-    <input type="text" id="frequencyBox" maxlength="7" placeholder="000.000" oninput="formatFrequency(this)">
-    <button id="joinBtn" onclick="joinFrequency()">Rejoindre</button>
-  </div>
-
-  <div id="microToggle">
-    <i id="micIcon">🎤</i><br>
-    <span id="micStatus">OFF</span>
-  </div>
-
-  <!-- Firebase App -->
-  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
 
   <script>
-    // CONFIG FIREBASE
+    // Config Firebase
     const firebaseConfig = {
       apiKey: "AIzaSyDyWu4TI4PIRXfeb7yqt0WIGClgu10IjkM",
       authDomain: "kylita-f2923.firebaseapp.com",
@@ -137,108 +55,159 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
 
-    let localStream = null;
-    let audioContext, analyser, dataArray;
-    let micEnabled = false;
-    let pseudo = localStorage.getItem("pseudo") || "Anonyme";
+    // Récupère le pseudo de l'utilisateur
+    const pseudo = localStorage.getItem("pseudo") || "Anonyme";
+    const frequency = "freq123";
+    const myId = Math.random().toString(36).substring(2, 9);
 
-    function formatFrequency(input) {
-      let val = input.value.replace(/\D/g, "");
-      if (val.length > 3) val = val.slice(0, 3) + "." + val.slice(3, 6);
-      input.value = val;
-    }
+    // WebRTC setup
+    let localStream;
+    const peers = {};
+    const configuration = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
 
-    async function listAudioDevices() {
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      const inputSelect = document.getElementById("inputSelect");
-      const outputSelect = document.getElementById("outputSelect");
-      inputSelect.innerHTML = "";
-      outputSelect.innerHTML = "";
-      devices.forEach(device => {
-        const option = document.createElement("option");
-        option.value = device.deviceId;
-        option.text = device.label || `${device.kind}`;
-        if (device.kind === "audioinput") inputSelect.appendChild(option);
-        if (device.kind === "audiooutput") outputSelect.appendChild(option);
-      });
-    }
-
-    async function initMicrophone() {
-      const inputDeviceId = document.getElementById("inputSelect").value;
-      localStream = await navigator.mediaDevices.getUserMedia({
-        audio: { deviceId: inputDeviceId ? { exact: inputDeviceId } : undefined },
-        video: false
-      });
-
-      audioContext = new AudioContext();
-      const source = audioContext.createMediaStreamSource(localStream);
-      analyser = audioContext.createAnalyser();
+    // 🔊 Barre décibels micro
+    function monitorMic(stream) {
+      const audioCtx = new AudioContext();
+      const analyser = audioCtx.createAnalyser();
+      const micSource = audioCtx.createMediaStreamSource(stream);
+      micSource.connect(analyser);
       analyser.fftSize = 256;
-      source.connect(analyser);
-      dataArray = new Uint8Array(analyser.frequencyBinCount);
+      const dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+      function updateVolumeBar() {
+        analyser.getByteFrequencyData(dataArray);
+        let avg = dataArray.reduce((a, b) => a + b) / dataArray.length;
+        let percent = Math.min(100, (avg / 255) * 100);
+        document.getElementById("volumeBar").style.height = percent + "%";
+        requestAnimationFrame(updateVolumeBar);
+      }
       updateVolumeBar();
     }
-function monitorIncomingAudio(stream) {
-  const audioCtx = new AudioContext();
-  const source = audioCtx.createMediaStreamSource(stream);
-  const analyserIn = audioCtx.createAnalyser();
-  analyserIn.fftSize = 256;
-  source.connect(analyserIn);
-  const dataArrayIn = new Uint8Array(analyserIn.frequencyBinCount);
 
-  function updateIncomingBar() {
-    analyserIn.getByteFrequencyData(dataArrayIn);
-    let total = 0;
-    for (let i = 0; i < dataArrayIn.length; i++) total += dataArrayIn[i];
-    let average = total / dataArrayIn.length;
-    let percent = Math.min(100, (average / 255) * 100);
-    document.getElementById("incomingBar").style.height = percent + "%";
-    requestAnimationFrame(updateIncomingBar);
-  }
+    // 🔈 Barre décibels entrants
+    function monitorIncomingAudio(stream) {
+      const audioCtx = new AudioContext();
+      const analyser = audioCtx.createAnalyser();
+      const source = audioCtx.createMediaStreamSource(stream);
+      source.connect(analyser);
+      analyser.fftSize = 256;
+      const dataArray = new Uint8Array(analyser.frequencyBinCount);
 
-  updateIncomingBar();
-}
-
-    function updateVolumeBar() {
-      if (!analyser) return;
-      analyser.getByteFrequencyData(dataArray);
-      let values = 0;
-      for (let i = 0; i < dataArray.length; i++) values += dataArray[i];
-      let average = values / dataArray.length;
-      let heightPercent = Math.min(100, (average / 255) * 100);
-      document.getElementById("volumeBar").style.height = heightPercent + "%";
-      requestAnimationFrame(updateVolumeBar);
+      function updateIncomingBar() {
+        analyser.getByteFrequencyData(dataArray);
+        let avg = dataArray.reduce((a, b) => a + b) / dataArray.length;
+        let percent = Math.min(100, (avg / 255) * 100);
+        document.getElementById("incomingBar").style.height = percent + "%";
+        requestAnimationFrame(updateIncomingBar);
+      }
+      updateIncomingBar();
     }
 
-    async function joinFrequency() {
-      const freq = document.getElementById("frequencyBox").value;
-      if (!/^\d{3}\.\d{3}$/.test(freq)) {
-        alert("Fréquence invalide !");
-        return;
-      }
+    async function start() {
+      // 🔴 Accès micro
+      localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      monitorMic(localStream);
 
-      await initMicrophone();
-
-      // 🔥 Enregistrement du pseudo dans Firebase sous /frequences/xxx.xxx/
-      const freqKey = freq.replace('.', '_');
-      const userRef = db.ref("frequences/" + freqKey + "/" + pseudo);
-      userRef.set({
-        connectedAt: Date.now()
+      // Enregistre l'utilisateur dans la fréquence
+      db.ref(`frequencies/${frequency}/${myId}`).set({
+        pseudo,
+        joinedAt: Date.now()
       });
 
-      console.log(`Connecté à la fréquence ${freq} en tant que ${pseudo}`);
+      // Supprime à la déconnexion
+      window.addEventListener("beforeunload", () => {
+        db.ref(`frequencies/${frequency}/${myId}`).remove();
+      });
+
+      // ✅ On écoute les autres utilisateurs
+      db.ref(`frequencies/${frequency}`).on("child_added", async (snap) => {
+        const peerId = snap.key;
+        if (peerId === myId || peers[peerId]) return;
+
+        const pc = new RTCPeerConnection(configuration);
+        localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+        peers[peerId] = pc;
+
+        pc.onicecandidate = e => {
+          if (e.candidate) {
+            db.ref(`signals/${frequency}/${peerId}/${myId}/candidates`).push(JSON.stringify(e.candidate));
+          }
+        };
+
+        pc.ontrack = e => {
+          const remoteStream = e.streams[0];
+          const audio = new Audio();
+          audio.srcObject = remoteStream;
+          audio.play();
+          monitorIncomingAudio(remoteStream);
+        };
+
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+
+        db.ref(`signals/${frequency}/${peerId}/${myId}`).set({
+          offer: JSON.stringify(offer),
+          from: myId,
+          pseudo
+        });
+      });
+
+      // ✅ Quand quelqu’un nous envoie une offre
+      db.ref(`signals/${frequency}/${myId}`).on("child_added", async (snap) => {
+        const peerId = snap.key;
+        const data = snap.val();
+        if (peers[peerId]) return;
+
+        const pc = new RTCPeerConnection(configuration);
+        localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+        peers[peerId] = pc;
+
+        pc.onicecandidate = e => {
+          if (e.candidate) {
+            db.ref(`signals/${frequency}/${peerId}/${myId}/candidates`).push(JSON.stringify(e.candidate));
+          }
+        };
+
+        pc.ontrack = e => {
+          const remoteStream = e.streams[0];
+          const audio = new Audio();
+          audio.srcObject = remoteStream;
+          audio.play();
+          monitorIncomingAudio(remoteStream);
+        };
+
+        const remoteOffer = JSON.parse(data.offer);
+        await pc.setRemoteDescription(new RTCSessionDescription(remoteOffer));
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+
+        db.ref(`signals/${frequency}/${peerId}/${myId}`).update({
+          answer: JSON.stringify(answer)
+        });
+      });
+
+      // ✅ Réception des candidats ICE
+      db.ref(`signals/${frequency}/${myId}`).on("child_changed", async (snap) => {
+        const peerId = snap.key;
+        const data = snap.val();
+        if (data.answer && peers[peerId]) {
+          const answer = JSON.parse(data.answer);
+          await peers[peerId].setRemoteDescription(new RTCSessionDescription(answer));
+        }
+      });
+
+      db.ref(`signals/${frequency}/${myId}`).on("child_added", snap => {
+        const peerId = snap.key;
+        db.ref(`signals/${frequency}/${myId}/${peerId}/candidates`).on("child_added", csnap => {
+          const candidate = new RTCIceCandidate(JSON.parse(csnap.val()));
+          if (peers[peerId]) {
+            peers[peerId].addIceCandidate(candidate).catch(console.error);
+          }
+        });
+      });
     }
 
-    document.getElementById("microToggle").addEventListener("click", () => {
-      micEnabled = !micEnabled;
-      if (localStream) {
-        localStream.getAudioTracks()[0].enabled = micEnabled;
-      }
-      document.getElementById("micIcon").textContent = micEnabled ? "🎤" : "🔇";
-      document.getElementById("micStatus").textContent = micEnabled ? "ON" : "OFF";
-    });
-
-    navigator.mediaDevices.getUserMedia({ audio: true }).then(listAudioDevices);
+    start();
   </script>
 </body>
 </html>
