@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <title>Lecteur Kylita</title>
+  <style>
+    body {
+      background: linear-gradient(to bottom, #333, #888);
+      color: white;
+      font-family: sans-serif;
+      text-align: center;
+      padding: 40px;
+    }
+    button {
+      margin-top: 20px;
+      padding: 12px 20px;
+      font-size: 16px;
+      background-color: orange;
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+    }
+    audio {
+      margin-top: 20px;
+    }
+  </style>
+</head>
+<body>
+  <h1>🎵 DJ Got Us Falling In Love</h1>
+  <button onclick="playSound()">▶️ Lancer la musique</button>
+
+  <audio id="audio" controls style="display: none;"></audio>
+
+  <script>
+    function playSound() {
+      const audio = document.getElementById("audio");
+      audio.src = "https://kykygosed.github.io/Kylita/dj_got_us_falling_in_love.mp3";
+      audio.style.display = "block";
+      audio.play().catch(err => {
+        console.error("Erreur de lecture :", err);
+      });
+    }
+  </script>
+</body>
+</html>
