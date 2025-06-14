@@ -74,10 +74,31 @@
     #microToggle i {
       font-size: 30px;
     }
+    #incomingBarContainer {
+  position: fixed;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 20px;
+  height: 200px;
+  background-color: #333;
+  border: 2px solid #777;
+  border-radius: 10px;
+  overflow: hidden;
+}
+#incomingBar {
+  width: 100%;
+  height: 0%;
+  background-color: cyan;
+  transition: height 0.1s ease;
+}
+
   </style>
 </head>
 <body>
   <div id="volumeBarContainer"><div id="volumeBar"></div></div>
+  <div id="incomingBarContainer"><div id="incomingBar"></div></div>
+
 
   <div>
     <div style="text-align: center;">
@@ -157,6 +178,26 @@
       dataArray = new Uint8Array(analyser.frequencyBinCount);
       updateVolumeBar();
     }
+function monitorIncomingAudio(stream) {
+  const audioCtx = new AudioContext();
+  const source = audioCtx.createMediaStreamSource(stream);
+  const analyserIn = audioCtx.createAnalyser();
+  analyserIn.fftSize = 256;
+  source.connect(analyserIn);
+  const dataArrayIn = new Uint8Array(analyserIn.frequencyBinCount);
+
+  function updateIncomingBar() {
+    analyserIn.getByteFrequencyData(dataArrayIn);
+    let total = 0;
+    for (let i = 0; i < dataArrayIn.length; i++) total += dataArrayIn[i];
+    let average = total / dataArrayIn.length;
+    let percent = Math.min(100, (average / 255) * 100);
+    document.getElementById("incomingBar").style.height = percent + "%";
+    requestAnimationFrame(updateIncomingBar);
+  }
+
+  updateIncomingBar();
+}
 
     function updateVolumeBar() {
       if (!analyser) return;
