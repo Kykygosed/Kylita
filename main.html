@@ -1,242 +1,217 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html>
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Voice chat par fréquence - WebRTC + Firebase</title>
-<style>
-  body { font-family: Arial, sans-serif; margin: 20px; background: #222; color: #eee; }
-  input, button { font-size: 1em; padding: 8px; margin: 5px; }
-  #log { background: #111; height: 150px; overflow-y: auto; padding: 10px; margin-top: 10px; border-radius: 5px; }
-</style>
+  <title>Kylita</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: linear-gradient(to bottom, #2c2c2c, #4b4b4b);
+      color: white;
+    }
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 20px;
+    }
+    #logo {
+      font-size: 36px;
+      font-weight: bold;
+    }
+    #userBox {
+      background: #3a3a3a;
+      padding: 10px 20px;
+      border-radius: 12px;
+      font-weight: bold;
+    }
+    #playlists {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+      padding: 20px;
+    }
+    .playlist-box {
+      background: #3a3a3a;
+      padding: 20px;
+      border-radius: 15px;
+      text-align: center;
+      cursor: pointer;
+    }
+    #createBtn {
+      display: block;
+      margin: 30px auto;
+      background: orange;
+      border: none;
+      padding: 15px 30px;
+      border-radius: 15px;
+      font-size: 16px;
+      font-weight: bold;
+      color: white;
+      cursor: pointer;
+    }
+    #nowPlaying {
+      background: orange;
+      border-radius: 15px;
+      margin: 20px;
+      padding: 15px;
+      text-align: center;
+      font-weight: bold;
+    }
+    .bottom-bar {
+      position: fixed;
+      bottom: 0;
+      width: 100%;
+      background: #2c2c2c;
+      display: flex;
+      justify-content: space-around;
+      padding: 10px 0;
+    }
+    .bottom-bar button {
+      background: orange;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 10px;
+      color: white;
+      font-weight: bold;
+      cursor: pointer;
+    }
+    .popup {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: orange;
+      padding: 30px;
+      border-radius: 20px;
+      color: black;
+      z-index: 999;
+      display: none;
+    }
+    .popup h2 { margin-top: 0; }
+    .popup ul {
+      list-style: none;
+      padding: 0;
+      margin-top: 20px;
+    }
+    .popup ul li {
+      margin: 5px 0;
+    }
+    .popup .closeBtn, .popup .playBtn {
+      margin-top: 10px;
+      padding: 10px;
+      background: #fff;
+      border: none;
+      border-radius: 10px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+  </style>
 </head>
 <body>
+  <header>
+    <div id="logo">Kylita</div>
+    <div id="userBox">Chargement...</div>
+  </header>
 
-<h2>Entrer la fréquence pour chatter</h2>
-<input id="freq" placeholder="Exemple: 12380" />
-<button id="joinBtn">Rejoindre</button>
+  <div id="playlists"></div>
 
-<div id="status"></div>
-<button id="leaveBtn" style="display:none;">Quitter la fréquence</button>
+  <button id="createBtn">+ Créer une playlist</button>
 
-<div id="log"></div>
+  <div id="nowPlaying">Aucun son en cours</div>
 
-<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+  <div class="bottom-bar">
+    <button onclick="location.href='home.html'">Accueil</button>
+    <button onclick="location.href='search.html'">Rechercher</button>
+  </div>
 
-<script>
-  // Config Firebase
-  const firebaseConfig = {
-    apiKey: "AIzaSyDyWu4TI4PIRXfeb7yqt0WIGClgu10IjkM",
-    authDomain: "kylita-f2923.firebaseapp.com",
-    databaseURL: "https://kylita-f2923-default-rtdb.firebaseio.com",
-    projectId: "kylita-f2923",
-    storageBucket: "kylita-f2923.firebasestorage.app",
-    messagingSenderId: "431823530994",
-    appId: "1:431823530994:web:88a07e633751686e5ad96b",
-    measurementId: "G-F4LLNWQJ16"
-  };
-  firebase.initializeApp(firebaseConfig);
-  const db = firebase.database();
+  <div class="popup" id="playlistPopup">
+    <h2 id="popupTitle">Nom de la playlist</h2>
+    <button class="playBtn">▶ Lancer</button>
+    <button class="closeBtn" onclick="closePopup()">Fermer</button>
+    <ul id="popupTracks"></ul>
+  </div>
 
-  // UI
-  const freqInput = document.getElementById('freq');
-  const joinBtn = document.getElementById('joinBtn');
-  const leaveBtn = document.getElementById('leaveBtn');
-  const statusDiv = document.getElementById('status');
-  const logDiv = document.getElementById('log');
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-app.js";
+    import { getDatabase, ref, get, child, set } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-database.js";
+    import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-auth.js";
 
-  function log(msg) {
-    console.log(msg);
-    logDiv.textContent += msg + '\n';
-    logDiv.scrollTop = logDiv.scrollHeight;
-  }
+    const firebaseConfig = {
+      // Tes infos Firebase ici
+    };
 
-  // Variables WebRTC
-  let localStream = null;
-  let peerConnection = null;
-  let freqRef = null;
-  let isCaller = false;
-  let remoteDescriptionSet = false;
-  let pendingCandidates = [];
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+    const auth = getAuth();
 
-  // Config ICE servers publiques Google
-  const iceServers = {
-    iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
-  };
+    const userBox = document.getElementById('userBox');
+    const playlistsDiv = document.getElementById('playlists');
+    let playlists = [];
+    let userId;
 
-  joinBtn.onclick = async () => {
-    const freq = freqInput.value.trim();
-    if (!freq) {
-      alert('Merci d’entrer une fréquence valide (ex: 12380)');
-      return;
+    function closePopup() {
+      document.getElementById("playlistPopup").style.display = "none";
     }
-    joinBtn.disabled = true;
-    freqInput.disabled = true;
-    leaveBtn.style.display = 'inline-block';
-    statusDiv.textContent = `Connexion à la fréquence ${freq}...`;
 
-    // Nettoyer les caractères invalides pour Firebase keys (pas de . # $ [ ] dans la key)
-    const freqKey = freq.replace(/[.#$[\]]/g, "_");
-    freqRef = db.ref('frequencies/' + freqKey);
-
-    await startCall();
-  };
-
-  leaveBtn.onclick = async () => {
-    statusDiv.textContent = 'Déconnecté';
-    joinBtn.disabled = false;
-    freqInput.disabled = false;
-    leaveBtn.style.display = 'none';
-
-    if (peerConnection) {
-      peerConnection.close();
-      peerConnection = null;
+    function openPopup(name, tracks) {
+      document.getElementById("popupTitle").innerText = name;
+      const list = document.getElementById("popupTracks");
+      list.innerHTML = "";
+      tracks.forEach(track => {
+        const li = document.createElement("li");
+        li.innerText = track;
+        list.appendChild(li);
+      });
+      document.getElementById("playlistPopup").style.display = "block";
     }
-    if (localStream) {
-      localStream.getTracks().forEach(t => t.stop());
-      localStream = null;
-    }
-    if (freqRef) {
-      await freqRef.remove();
-      freqRef = null;
-    }
-    remoteDescriptionSet = false;
-    pendingCandidates = [];
-    log('Déconnexion effectuée.');
-  };
 
-  async function startCall() {
-    try {
-      localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-      log('Micro activé');
-
-      peerConnection = new RTCPeerConnection(iceServers);
-
-      // Ajout des tracks audio au peerConnection
-      localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
-
-      // Quand on reçoit un track, on le joue
-      peerConnection.ontrack = event => {
-        log('Flux audio reçu');
-        const remoteAudio = document.getElementById('remoteAudio');
-        if (!remoteAudio) {
-          const audioElem = document.createElement('audio');
-          audioElem.id = 'remoteAudio';
-          audioElem.autoplay = true;
-          document.body.appendChild(audioElem);
-          audioElem.srcObject = event.streams[0];
+    function refreshPlaylists() {
+      playlistsDiv.innerHTML = "";
+      for (let i = 0; i < 6; i++) {
+        const div = document.createElement('div');
+        div.className = 'playlist-box';
+        if (playlists[i]) {
+          div.innerText = playlists[i].name;
+          div.onclick = () => openPopup(playlists[i].name, playlists[i].tracks || []);
         } else {
-          remoteAudio.srcObject = event.streams[0];
+          div.innerText = 'Emplacement vide';
         }
-      };
-
-      peerConnection.onicecandidate = event => {
-        if (event.candidate) {
-          // Envoie ICE candidate à Firebase
-          freqRef.child(isCaller ? 'callerCandidates' : 'calleeCandidates').push(event.candidate.toJSON());
-          log('ICE candidate envoyée');
-        }
-      };
-
-      // Observateurs Firebase
-
-      // Offre
-      freqRef.child('offer').on('value', async snapshot => {
-        const offer = snapshot.val();
-        if (!offer || isCaller) return;
-
-        log('Offre reçue, création réponse...');
-        await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
-        remoteDescriptionSet = true;
-
-        const answer = await peerConnection.createAnswer();
-        await peerConnection.setLocalDescription(answer);
-        await freqRef.child('answer').set(answer); 
-
-        log('Réponse envoyée.');
-
-        // Ajout candidats en attente
-        for (const c of pendingCandidates) {
-          await peerConnection.addIceCandidate(new RTCIceCandidate(c));
-        }
-        pendingCandidates = [];
-      });
-
-      // Réponse
-      freqRef.child('answer').on('value', async snapshot => {
-        const answer = snapshot.val();
-        if (!answer || !isCaller) return;
-
-        log('Réponse reçue');
-        await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
-        remoteDescriptionSet = true;
-
-        // Ajout candidats en attente
-        for (const c of pendingCandidates) {
-          await peerConnection.addIceCandidate(new RTCIceCandidate(c));
-        }
-        pendingCandidates = [];
-      });
-
-      // Candidates caller
-      freqRef.child('callerCandidates').on('child_added', async snapshot => {
-        const candidate = snapshot.val();
-        if (isCaller) return;
-        if (!remoteDescriptionSet) {
-          pendingCandidates.push(candidate);
-          log('Candidate caller stockée (remoteDescription pas encore prête)');
-        } else {
-          try {
-            await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
-            log('Candidate caller ajoutée');
-          } catch (e) {
-            log('Erreur ajout candidate caller: ' + e);
-          }
-        }
-      });
-
-      // Candidates callee
-      freqRef.child('calleeCandidates').on('child_added', async snapshot => {
-        const candidate = snapshot.val();
-        if (!isCaller) return;
-        if (!remoteDescriptionSet) {
-          pendingCandidates.push(candidate);
-          log('Candidate callee stockée (remoteDescription pas encore prête)');
-        } else {
-          try {
-            await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
-            log('Candidate callee ajoutée');
-          } catch (e) {
-            log('Erreur ajout candidate callee: ' + e);
-          }
-        }
-      });
-
-      // Créer l’offre si on est le premier (appelant)
-      const offerSnapshot = await freqRef.child('offer').get();
-      if (!offerSnapshot.exists()) {
-        isCaller = true;
-        log('Tu es l’appelant, création de l’offre...');
-        const offer = await peerConnection.createOffer();
-        await peerConnection.setLocalDescription(offer);
-        await freqRef.child('offer').set(offer.toJSON());
-        log('Offre envoyée, en attente de la réponse...');
-      } else {
-        isCaller = false;
-        log('Tu es le receveur, attente de l’offre...');
+        playlistsDiv.appendChild(div);
       }
-
-      statusDiv.textContent = 'Connecté à la fréquence ' + freqInput.value;
-    } catch (err) {
-      log('Erreur : ' + err);
-      joinBtn.disabled = false;
-      freqInput.disabled = false;
-      leaveBtn.style.display = 'none';
     }
-  }
-</script>
 
+    onAuthStateChanged(auth, user => {
+      if (user) {
+        userId = user.uid;
+        const userRef = ref(db, `users/${userId}`);
+        get(userRef).then(snapshot => {
+          if (snapshot.exists()) {
+            const userData = snapshot.val();
+            userBox.innerText = userData.name || user.email;
+            playlists = userData.playlists || [];
+            refreshPlaylists();
+          }
+        });
+      }
+    });
+
+    document.getElementById("createBtn").onclick = () => {
+      if (!userId) return alert("Utilisateur non connecté");
+      const name = prompt("Nom de la playlist :");
+      if (name) {
+        if (playlists.length >= 6) {
+          alert("Limite de 6 playlists atteinte");
+          return;
+        }
+        const newPlaylist = { name: name, tracks: [] };
+        playlists.push(newPlaylist);
+        refreshPlaylists();
+        // Enregistre dans Firebase
+        set(ref(db, `users/${userId}/playlists`), playlists);
+      }
+    }
+  </script>
 </body>
 </html>
 
