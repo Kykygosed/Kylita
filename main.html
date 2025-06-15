@@ -63,7 +63,6 @@
       background: rgba(255, 255, 255, 0.3);
     }
 
-    /* Popup virement */
     .popup {
       position: fixed;
       top: 50%;
@@ -106,6 +105,27 @@
       width: 48%;
     }
 
+    /* Notification */
+    .notification {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: #00c853;
+      color: white;
+      padding: 15px 20px;
+      border-radius: 10px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+      z-index: 9999;
+      opacity: 0;
+      transform: translateY(-20px);
+      transition: all 0.4s ease;
+    }
+
+    .notification.show {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
   </style>
 </head>
 <body>
@@ -117,7 +137,6 @@
     <button onclick="openPopup()">Faire un virement</button>
   </div>
 
-  <!-- Popup -->
   <div class="popup" id="virementPopup">
     <h2>Virement</h2>
     <input type="text" id="destinataire" placeholder="Pseudo du destinataire">
@@ -127,6 +146,9 @@
       <button onclick="closePopup()">Annuler</button>
     </div>
   </div>
+
+  <!-- Notification -->
+  <div class="notification" id="notification"></div>
 
   <!-- Firebase -->
   <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
@@ -147,17 +169,30 @@
     const pseudo = localStorage.getItem("pseudo");
     if (!pseudo) window.location.href = "index.html";
     document.getElementById("pseudo").textContent = pseudo;
-
     const soldeElement = document.getElementById("solde");
-
     const userRef = db.ref("users/" + pseudo);
-    userRef.once("value").then(snapshot => {
-      if (!snapshot.exists()) {
-        userRef.set({ solde: 500 });
-        soldeElement.textContent = "500‡";
-      } else {
-        const solde = snapshot.val().solde || 0;
-        soldeElement.textContent = `${solde}‡`;
+
+    // Solde en temps réel
+    userRef.on("value", snapshot => {
+      const solde = snapshot.val()?.solde ?? 0;
+      soldeElement.textContent = `${solde}‡`;
+    });
+
+    // Affiche une notification
+    function showNotification(message) {
+      const notif = document.getElementById("notification");
+      notif.textContent = message;
+      notif.classList.add("show");
+      setTimeout(() => notif.classList.remove("show"), 4000);
+    }
+
+    // Écoute des virements reçus
+    const notifRef = db.ref("notifications/" + pseudo);
+    notifRef.on("child_added", snapshot => {
+      const data = snapshot.val();
+      if (data && data.type === "virement") {
+        showNotification(`💸 ${data.from} vous a envoyé ${data.amount}‡`);
+        snapshot.ref.remove(); // Supprime la notification une fois affichée
       }
     });
 
@@ -185,7 +220,7 @@
       }
 
       userRef.once("value").then(snapshot => {
-        const soldeActuel = snapshot.val().solde || 0;
+        const soldeActuel = snapshot.val()?.solde || 0;
         if (soldeActuel < montant) {
           alert("Solde insuffisant !");
           return;
@@ -202,7 +237,15 @@
           userRef.update({ solde: soldeActuel - montant });
           destRef.update({ solde: (destSnap.val().solde || 0) + montant });
 
-          soldeElement.textContent = `${soldeActuel - montant}‡`;
+          // Notification
+          const notifRef = db.ref("notifications/" + destinataire).push();
+          notifRef.set({
+            type: "virement",
+            from: pseudo,
+            amount: montant,
+            time: Date.now()
+          });
+
           alert("Virement effectué !");
           closePopup();
         });
