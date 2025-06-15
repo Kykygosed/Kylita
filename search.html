@@ -2,203 +2,340 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
-  <title>Recherche - Kylita</title>
+  <title>Kylita</title>
   <style>
     body {
       margin: 0;
-      font-family: sans-serif;
-      background: linear-gradient(120deg, #1d1f27, #3a3d4a);
+      font-family: Arial, sans-serif;
+      background: linear-gradient(to bottom, #000000, #444);
       color: white;
-    }
-
-    header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 1rem;
-      background: rgba(0, 0, 0, 0.4);
     }
 
     h1 {
-      margin: 0;
-      font-size: 2rem;
+      font-size: 3em;
+      margin: 20px;
+      font-weight: bold;
+      text-align: center;
     }
 
-    .search-bar {
-      width: 100%;
-      padding: 1rem;
-      box-sizing: border-box;
-    }
-
-    .search-bar input {
-      width: 100%;
-      padding: 1rem;
-      font-size: 1.2rem;
-      border-radius: 10px;
+    #searchBar {
+      width: 60%;
+      margin: 20px auto;
+      padding: 15px;
+      font-size: 1.5em;
       border: none;
-    }
-
-    .results {
-      padding: 1rem;
+      border-radius: 8px;
+      font-style: italic;
+      font-weight: bold;
+      display: block;
     }
 
     .result {
-      background: #2c3e50;
-      border-radius: 10px;
-      padding: 1rem;
-      margin-bottom: 1rem;
+      display: flex;
+      align-items: center;
+      background-color: #111;
+      margin: 10px auto;
+      padding: 10px;
+      width: 60%;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background 0.3s;
     }
 
-    .result-title {
+    .result:hover {
+      background-color: #222;
+    }
+
+    .result.playing {
+      background-color: #005f00;
+    }
+
+    .result .info {
+      flex-grow: 1;
+    }
+
+    .result .info strong {
+      display: block;
+    }
+
+    .result .plus {
+      font-size: 1.5em;
+      margin-left: 10px;
+      cursor: pointer;
+    }
+
+    #nowPlaying {
+      background-color: #445bff;
+      color: black;
+      padding: 15px;
+      position: fixed;
+      bottom: 0;
+      width: 100%;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
       font-weight: bold;
     }
 
-    .result-artist {
+    #nowPlaying .text small {
       font-style: italic;
     }
 
-    .audio-controls {
-      margin-top: 0.5rem;
-    }
-
-    .playlist-select {
-      margin-top: 0.5rem;
-      display: none;
+    audio {
+      width: 300px;
     }
 
     select, button {
-      margin-top: 5px;
-      padding: 5px 10px;
-      border-radius: 5px;
-      border: none;
-    }
-
-    button:hover {
-      cursor: pointer;
-      background: #3498db;
-      color: white;
+      margin-left: 10px;
+      padding: 5px;
+      font-weight: bold;
     }
   </style>
 </head>
 <body>
-  <header>
-    <h1>Kylita</h1>
-    <div id="user-info">Compte</div>
-  </header>
 
-  <div class="search-bar">
-    <input type="text" id="searchInput" placeholder="Rechercher un son...">
+  <h1>Kylita</h1>
+  <input type="text" id="searchBar" placeholder="Rechercher une musique...">
+  <div id="results"></div>
+
+  <div id="nowPlaying" style="display: none;">
+    <div class="text">
+      <strong id="trackTitle">Titre</strong><br>
+      <small id="trackArtist">Artiste</small>
+    </div>
+    <audio id="audioPlayer" controls></audio>
+    <select id="playlistDropdown"></select>
+    <button onclick="addToPlaylist()">+ Playlist</button>
   </div>
 
-  <div class="results" id="results"></div>
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+  import {
+    getDatabase, ref, push, onValue, set, get
+  } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+  import {
+    getAuth, onAuthStateChanged
+  } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
-  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
-  <script>
-    const firebaseConfig = {
-      apiKey: "AIzaSyDyWu4TI4PIRXfeb7yqt0WIGClgu10IjkM",
-      authDomain: "kylita-f2923.firebaseapp.com",
-      databaseURL: "https://kylita-f2923-default-rtdb.firebaseio.com",
-      projectId: "kylita-f2923",
-      storageBucket: "kylita-f2923.appspot.com",
-      messagingSenderId: "431823530994",
-      appId: "1:431823530994:web:88a07e633751686e5ad96b",
-      measurementId: "G-F4LLNWQJ16"
-    };
+  const firebaseConfig = {
+    apiKey: "AIzaSyDyWu4TI4PIRXfeb7yqt0WIGClgu10IjkM",
+    authDomain: "kylita-f2923.firebaseapp.com",
+    databaseURL: "https://kylita-f2923-default-rtdb.firebaseio.com",
+    projectId: "kylita-f2923",
+    storageBucket: "kylita-f2923.appspot.com",
+    messagingSenderId: "431823530994",
+    appId: "1:431823530994:web:88a07e633751686e5ad96b"
+  };
 
-    firebase.initializeApp(firebaseConfig);
-    const db = firebase.database();
+  const app = initializeApp(firebaseConfig);
+  const db = getDatabase(app);
+  const auth = getAuth();
 
-    const searchInput = document.getElementById("searchInput");
-    const resultsDiv = document.getElementById("results");
+  let currentUser = null;
+  let userPlaylists = {};
+  let currentTrack = null;
+  let currentElement = null;
+  let currentIndex = -1;
 
-    searchInput.addEventListener("input", async () => {
-      const query = searchInput.value.trim();
-      if (!query) {
-        resultsDiv.innerHTML = "";
+  const searchBar = document.getElementById('searchBar');
+  const results = document.getElementById('results');
+  const nowPlaying = document.getElementById('nowPlaying');
+  const audioPlayer = document.getElementById('audioPlayer');
+  const trackTitle = document.getElementById('trackTitle');
+  const trackArtist = document.getElementById('trackArtist');
+  const playlistDropdown = document.getElementById('playlistDropdown');
+
+  // Contrôles personnalisés
+  const controls = document.createElement('div');
+  controls.innerHTML = `
+    <button id="prevBtn">⏮️</button>
+    <button id="playPauseBtn">⏯️</button>
+    <button id="nextBtn">⏭️</button>
+    <button id="replayBtn">🔁</button>
+  `;
+  nowPlaying.appendChild(controls);
+
+  onAuthStateChanged(auth, user => {
+    if (user) {
+      currentUser = user;
+      const playlistsRef = ref(db, 'users/' + user.uid + '/playlists');
+      onValue(playlistsRef, snapshot => {
+        userPlaylists = snapshot.val() || {};
+        updatePlaylistDropdown();
+      });
+
+      // Charger état de lecture
+      const stateRef = ref(db, 'users/' + user.uid + '/playerState');
+      get(stateRef).then(snapshot => {
+        const state = snapshot.val();
+        if (state && state.url) {
+          restorePlayback(state);
+        }
+      });
+    }
+  });
+
+  function updatePlaylistDropdown() {
+    playlistDropdown.innerHTML = '<option disabled selected>Playlist</option>';
+    for (const name in userPlaylists) {
+      const option = document.createElement('option');
+      option.value = name;
+      option.textContent = name;
+      playlistDropdown.appendChild(option);
+    }
+  }
+
+  searchBar.addEventListener('input', () => {
+    clearTimeout(window.searchDelay);
+    window.searchDelay = setTimeout(() => {
+      const query = searchBar.value.trim();
+      if (query.length >= 2) {
+        searchMusic(query);
+      }
+    }, 500);
+  });
+
+  async function searchMusic(query) {
+    results.innerHTML = 'Recherche...';
+    const url = `https://archive.org/advancedsearch.php?q=collection:(opensource_audio)+AND+title:(${encodeURIComponent(query)})&fl[]=identifier&rows=30&output=json`;
+
+    try {
+      const res = await fetch(url);
+      const data = await res.json();
+      const docs = data.response.docs;
+      results.innerHTML = '';
+
+      if (docs.length === 0) {
+        results.innerHTML = 'Aucun résultat.';
         return;
       }
 
-      const response = await fetch(`https://archive.org/advancedsearch.php?q=${encodeURIComponent(query)}+AND+mediatype:(audio)&fl[]=identifier&rows=10&page=1&output=json`);
-      const data = await response.json();
+      for (const [index, doc] of docs.entries()) {
+        const identifier = doc.identifier;
+        const metaUrl = `https://archive.org/metadata/${identifier}`;
+        const metaRes = await fetch(metaUrl);
+        const metaData = await metaRes.json();
 
-      resultsDiv.innerHTML = "";
+        const file = metaData.files.find(f => f.name.endsWith('.mp3') || f.name.endsWith('.m4a'));
+        if (!file) continue;
 
-      for (const doc of data.response.docs) {
-        const id = doc.identifier;
-        const meta = await fetch(`https://archive.org/metadata/${id}`).then(r => r.json());
-        const files = meta.files.filter(f => f.name.match(/\.(mp3|ogg|m4a|flac|wav)$/i));
+        const title = file.title || identifier;
+        const artist = metaData.metadata.creator || 'Inconnu';
+        const audioUrl = `https://archive.org/download/${identifier}/${file.name}`;
 
-        if (files.length === 0) continue;
+        const div = document.createElement('div');
+        div.className = 'result';
+        div.dataset.index = index;
+        div.innerHTML = `<div class="info"><strong>${title}</strong><small>${artist}</small></div>`;
+        div.onclick = () => playTrack(title, artist, audioUrl, div, index);
 
-        const file = files[0];
-        const url = `https://archive.org/download/${id}/${file.name}`;
-        const title = meta.metadata.title || file.name;
-        const artist = meta.metadata.creator || "Inconnu";
-
-        const div = document.createElement("div");
-        div.className = "result";
-        div.innerHTML = `
-          <div class="result-title">${title}</div>
-          <div class="result-artist">${artist}</div>
-          <div class="audio-controls">
-            <audio controls src="${url}" preload="none"></audio><br>
-            <button class="add-to-playlist">Ajouter à une playlist</button>
-            <div class="playlist-select">
-              <select></select>
-              <button class="confirm-add">OK</button>
-            </div>
-          </div>
-        `;
-
-        const btn = div.querySelector(".add-to-playlist");
-        const dropdown = div.querySelector(".playlist-select");
-        const select = dropdown.querySelector("select");
-        const okBtn = dropdown.querySelector(".confirm-add");
-
-        // Remplir le menu déroulant lors du clic
-        btn.onclick = async () => {
-          dropdown.style.display = dropdown.style.display === "block" ? "none" : "block";
-
-          // Vider puis remplir la liste
-          select.innerHTML = "";
-          const snap = await firebase.database().ref("playlists").once("value");
-          const playlists = snap.val();
-
-          if (!playlists) {
-            select.innerHTML = `<option disabled>Aucune playlist</option>`;
-            return;
-          }
-
-          Object.keys(playlists).forEach(name => {
-            const opt = document.createElement("option");
-            opt.value = name;
-            opt.textContent = name;
-            select.appendChild(opt);
-          });
-        };
-
-        // Bouton OK
-        okBtn.onclick = () => {
-          const chosen = select.value;
-          if (!chosen) {
-            alert("Aucune playlist sélectionnée !");
-            return;
-          }
-
-          firebase.database().ref("playlists/" + chosen).push({
-            url,
-            title,
-            artist
-          });
-
-          alert(`Ajouté à la playlist "${chosen}"`);
-          dropdown.style.display = "none";
-        };
-
-        resultsDiv.appendChild(div);
+        results.appendChild(div);
       }
+    } catch (err) {
+      console.error(err);
+      results.innerHTML = 'Erreur lors de la recherche.';
+    }
+  }
+
+  function playTrack(title, artist, url, element, index) {
+    document.querySelectorAll('.result').forEach(e => e.classList.remove('playing'));
+    element.classList.add('playing');
+
+    currentTrack = { title, artist, url };
+    currentElement = element;
+    currentIndex = index;
+
+    trackTitle.textContent = title;
+    trackArtist.textContent = artist;
+    audioPlayer.src = url;
+    audioPlayer.play();
+    nowPlaying.style.display = 'flex';
+
+    saveState(0, true); // Lecture démarrée
+  }
+
+  // Auto-next
+  audioPlayer.addEventListener('ended', () => {
+    playNext();
+  });
+
+  // Sauvegarder progression toutes les secondes
+  setInterval(() => {
+    if (currentUser && currentTrack && !audioPlayer.paused) {
+      saveState(audioPlayer.currentTime, true);
+    }
+  }, 1000);
+
+  function saveState(seconds, isPlaying) {
+    if (!currentUser || !currentTrack) return;
+    set(ref(db, 'users/' + currentUser.uid + '/playerState'), {
+      ...currentTrack,
+      seconds,
+      isPlaying,
+      index: currentIndex
     });
-  </script>
+  }
+
+  function restorePlayback(state) {
+    const divs = document.querySelectorAll('.result');
+    const found = Array.from(divs).find(d => d.querySelector('strong')?.textContent === state.title);
+    if (found) {
+      playTrack(state.title, state.artist, state.url, found, state.index);
+      audioPlayer.currentTime = state.seconds || 0;
+      if (!state.isPlaying) {
+        audioPlayer.pause();
+      }
+    }
+  }
+
+  function addToPlaylist() {
+    const selected = playlistDropdown.value;
+    if (!currentUser || !currentTrack || !selected) {
+      alert('Sélectionnez une playlist.');
+      return;
+    }
+    const refPath = `users/${currentUser.uid}/playlists/${selected}`;
+    push(ref(db, refPath), currentTrack);
+    alert(`Ajouté à la playlist ${selected}`);
+  }
+
+  // Contrôles manuels
+  document.getElementById('playPauseBtn').onclick = () => {
+    if (!audioPlayer.src) return;
+    if (audioPlayer.paused) {
+      audioPlayer.play();
+      saveState(audioPlayer.currentTime, true);
+    } else {
+      audioPlayer.pause();
+      saveState(audioPlayer.currentTime, false);
+    }
+  };
+
+  document.getElementById('nextBtn').onclick = playNext;
+  document.getElementById('prevBtn').onclick = playPrev;
+  document.getElementById('replayBtn').onclick = () => {
+    if (audioPlayer.src) {
+      audioPlayer.currentTime = 0;
+      audioPlayer.play();
+      saveState(0, true);
+    }
+  };
+
+  function playNext() {
+    const next = document.querySelector(`.result[data-index="${currentIndex + 1}"]`);
+    if (next) {
+      next.click();
+    }
+  }
+
+  function playPrev() {
+    const prev = document.querySelector(`.result[data-index="${currentIndex - 1}"]`);
+    if (prev) {
+      prev.click();
+    }
+  }
+</script>
+
+
 </body>
 </html>
