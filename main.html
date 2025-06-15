@@ -1,182 +1,189 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-  <meta charset="UTF-8" />
-  <title>KyPay</title>
-  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+  <meta charset="UTF-8">
+  <title>Kydollar - Virements</title>
   <style>
     body {
-      font-family: sans-serif;
-      background-color: #f4f4f4;
+      margin: 0;
       padding: 20px;
-    }
-
-    .btn {
-      background-color: #0070f3;
+      font-family: 'Segoe UI', sans-serif;
+      background: url('https://images.unsplash.com/photo-1506744038136-46273834b3fb') no-repeat center center fixed;
+      background-size: cover;
       color: white;
-      padding: 12px 20px;
-      border: none;
-      border-radius: 10px;
-      font-size: 16px;
-      cursor: pointer;
-      margin-top: 10px;
     }
 
-    .card {
-      background: white;
-      padding: 10px 15px;
-      border-radius: 10px;
-      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-      margin-bottom: 10px;
+    .button {
+      background-color: #007bff;
+      border: none;
+      color: white;
+      padding: 15px 25px;
+      text-align: center;
+      font-size: 1.1em;
+      border-radius: 20px;
+      cursor: pointer;
+      margin-bottom: 20px;
+    }
+
+    .button:hover {
+      background-color: #0056b3;
+    }
+
+    .form-container {
+      display: none;
+      margin-bottom: 20px;
     }
 
     input {
       padding: 10px;
-      margin: 5px 0;
-      width: 100%;
-      border: 1px solid #ccc;
       border-radius: 8px;
+      border: none;
+      margin-right: 10px;
+      width: 150px;
     }
 
-    #notifications {
-      margin-top: 30px;
+    #fortune {
+      font-size: 1.3em;
+      margin-bottom: 20px;
+      background: rgba(0,0,0,0.4);
+      padding: 15px;
+      border-radius: 10px;
+    }
+
+    .notification-card {
+      background: rgba(255, 255, 255, 0.1);
+      border-left: 5px solid #00ccff;
+      margin-bottom: 10px;
+      padding: 10px;
+      border-radius: 10px;
+      backdrop-filter: blur(5px);
     }
   </style>
 </head>
 <body>
 
-  <h1>KyPay</h1>
+  <button class="button" id="toggleForm">+ Nouveau virement</button>
 
-  <div>
-    <button class="btn" onclick="toggleForm()">+ Nouveau virement</button>
-    <div id="form" style="display:none; margin-top: 10px;">
-      <input type="text" id="recipientPseudo" placeholder="Pseudo du destinataire">
-      <input type="number" id="amount" step="0.01" placeholder="Montant (ex: 15.00)">
-      <button class="btn" onclick="sendTransfer()">Envoyer</button>
-    </div>
+  <div class="form-container" id="formContainer">
+    <input type="text" id="receiver" placeholder="Pseudo destinataire">
+    <input type="text" id="amount" placeholder="Montant (ex: 15.50)">
+    <button class="button" id="sendBtn">Envoyer</button>
   </div>
 
-  <h2 style="margin-top: 30px;">Votre fortune:</h2>
-  <div class="card" id="balance">Chargement...</div>
+  <div id="fortune">Votre fortune: <span id="balance">0.00 ‡</span></div>
 
-  <h2>Notifications</h2>
+  <h3>Notifications :</h3>
   <div id="notifications"></div>
 
-  <script>
-    // CONFIG FIREBASE
-    const firebaseConfig = {
-      apiKey: "TA_CLÉ",
-      authDomain: "TON_PROJET.firebaseapp.com",
-      databaseURL: "https://TON_PROJET.firebaseio.com",
-      projectId: "TON_PROJET",
-      storageBucket: "TON_PROJET.appspot.com",
-      messagingSenderId: "XXX",
-      appId: "XXX"
-    };
-    firebase.initializeApp(firebaseConfig);
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
 
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyDyWu4TI4PIRXfeb7yqt0WIGClgu10IjkM",
+      authDomain: "kylita-f2923.firebaseapp.com",
+      projectId: "kylita-f2923",
+      databaseURL: "https://kylita-f2923-default-rtdb.firebaseio.com",
+      storageBucket: "kylita-f2923.appspot.com",
+      messagingSenderId: "431823530994",
+      appId: "1:431823530994:web:88a07e633751686e5ad96b",
+      measurementId: "G-F4LLNWQJ16"
+    };
+
+    firebase.initializeApp(firebaseConfig);
     const auth = firebase.auth();
     const db = firebase.database();
 
-    let currentUserId = null;
-    let currentPseudo = null;
-    let currentBalance = 0;
+    let currentUser = null;
+    const pseudo = localStorage.getItem("pseudo");
 
-    auth.onAuthStateChanged(async (user) => {
-      if (user) {
-        currentUserId = user.uid;
-        const snapshot = await db.ref(`users/${user.uid}`).once('value');
-        const userData = snapshot.val();
-        currentPseudo = userData.pseudo;
-        currentBalance = userData.balance || 0;
-        updateBalanceDisplay();
-        listenToIncomingTransfers();
-      } else {
-        alert("Non connecté !");
-        window.location.href = "index.html";
-      }
+    if (!pseudo) {
+      alert("Utilisateur non connecté !");
+      window.location.href = "index.html";
+    }
+
+    const balanceSpan = document.getElementById("balance");
+    const formContainer = document.getElementById("formContainer");
+    const notificationsDiv = document.getElementById("notifications");
+
+    document.getElementById("toggleForm").addEventListener("click", () => {
+      formContainer.style.display = formContainer.style.display === "none" ? "block" : "none";
     });
 
-    function toggleForm() {
-      const form = document.getElementById('form');
-      form.style.display = form.style.display === "none" ? "block" : "none";
-    }
+    // Affichage de la fortune en temps réel
+    const balanceRef = db.ref("users/" + pseudo + "/balance");
+    balanceRef.on("value", (snap) => {
+      const balance = snap.val() || 0;
+      balanceSpan.innerText = `${parseFloat(balance).toFixed(2)} ‡`;
+    });
 
-    function updateBalanceDisplay() {
-      document.getElementById('balance').textContent = `${currentBalance.toFixed(2)} ‡`;
-    }
+    // Notifications en temps réel
+    const notifRef = db.ref("users/" + pseudo + "/notifications");
+    notifRef.on("child_added", (snap) => {
+      const text = snap.val();
+      const div = document.createElement("div");
+      div.className = "notification-card";
+      div.innerText = text;
+      notificationsDiv.prepend(div);
+    });
 
-    async function sendTransfer() {
-      const recipientPseudo = document.getElementById('recipientPseudo').value.trim();
-      const amount = parseFloat(document.getElementById('amount').value.trim());
+    // Envoi d’un virement
+    document.getElementById("sendBtn").addEventListener("click", async () => {
+      const receiver = document.getElementById("receiver").value.trim();
+      const amountStr = document.getElementById("amount").value.trim();
+      const amount = parseFloat(amountStr);
 
-      if (!recipientPseudo || isNaN(amount) || amount <= 0) {
-        alert("Veuillez remplir tous les champs correctement.");
+      if (!receiver || isNaN(amount) || amount <= 0) {
+        alert("Entrez un destinataire valide et un montant positif.");
         return;
       }
 
-      if (amount > currentBalance) {
-        alert("Fonds insuffisants !");
+      const senderRef = db.ref("users/" + pseudo);
+      const receiverRef = db.ref("users/" + receiver);
+
+      const senderSnap = await senderRef.once("value");
+      const senderData = senderSnap.val();
+
+      if (!senderData || senderData.balance === undefined) {
+        alert("Erreur : votre compte n’a pas de solde.");
         return;
       }
 
-      // Trouver le destinataire
-      const usersSnap = await db.ref('users').once('value');
-      let recipientId = null;
+      const currentBalance = parseFloat(senderData.balance);
 
-      usersSnap.forEach(child => {
-        if (child.val().pseudo === recipientPseudo) {
-          recipientId = child.key;
-        }
+      if (currentBalance < amount) {
+        alert("Vous n'avez pas assez de Kydollars.");
+        return;
+      }
+
+      const receiverSnap = await receiverRef.once("value");
+      if (!receiverSnap.exists()) {
+        alert("Le destinataire n’existe pas.");
+        return;
+      }
+
+      // Mise à jour des soldes
+      await senderRef.update({
+        balance: (currentBalance - amount).toFixed(2)
       });
 
-      if (!recipientId) {
-        alert("Destinataire introuvable !");
-        return;
-      }
-
-      // Exécuter le virement
-      const updates = {};
-      updates[`users/${currentUserId}/balance`] = currentBalance - amount;
-      updates[`users/${recipientId}/balance`] = firebase.database.ServerValue.increment(amount);
-
-      await db.ref().update(updates);
-
-      // Mise à jour locale
-      currentBalance -= amount;
-      updateBalanceDisplay();
-
-      // Notification pour l’envoyeur
-      addNotification(`Vous avez fait un virement de ${amount.toFixed(2)} ‡ à ${recipientPseudo}.`);
-
-      // Notification pour le receveur (dans sa base)
-      const notifRef = db.ref(`users/${recipientId}/notifications`).push();
-      notifRef.set(`Vous avez reçu un virement de ${amount.toFixed(2)} ‡ de la part de ${currentPseudo}!`);
-
-      document.getElementById('recipientPseudo').value = '';
-      document.getElementById('amount').value = '';
-      toggleForm();
-    }
-
-    function addNotification(msg) {
-      const container = document.getElementById('notifications');
-      const card = document.createElement('div');
-      card.className = 'card';
-      card.textContent = msg;
-      container.prepend(card);
-    }
-
-    function listenToIncomingTransfers() {
-      const notifRef = db.ref(`users/${currentUserId}/notifications`);
-      notifRef.on('child_added', (snapshot) => {
-        const message = snapshot.val();
-        addNotification(message);
-        // On peut supprimer la notif une fois affichée si on veut
-        notifRef.child(snapshot.key).remove();
+      const receiverBalance = parseFloat(receiverSnap.val().balance || 0);
+      await receiverRef.update({
+        balance: (receiverBalance + amount).toFixed(2)
       });
-    }
+
+      const timestamp = Date.now();
+
+      // Notifications
+      await db.ref("users/" + pseudo + "/notifications/" + timestamp).set(`Vous avez fait un virement de ${amount.toFixed(2)} ‡ à ${receiver}.`);
+      await db.ref("users/" + receiver + "/notifications/" + timestamp).set(`Vous avez reçu un virement de ${amount.toFixed(2)} ‡ de la part de ${pseudo} !`);
+
+      document.getElementById("receiver").value = "";
+      document.getElementById("amount").value = "";
+    });
   </script>
+
 </body>
 </html>
