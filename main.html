@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <title>KyPay</title>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+  <style>
+    body {
+      font-family: sans-serif;
+      background-color: #f4f4f4;
+      padding: 20px;
+    }
+
+    .btn {
+      background-color: #0070f3;
+      color: white;
+      padding: 12px 20px;
+      border: none;
+      border-radius: 10px;
+      font-size: 16px;
+      cursor: pointer;
+      margin-top: 10px;
+    }
+
+    .card {
+      background: white;
+      padding: 10px 15px;
+      border-radius: 10px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+      margin-bottom: 10px;
+    }
+
+    input {
+      padding: 10px;
+      margin: 5px 0;
+      width: 100%;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+    }
+
+    #notifications {
+      margin-top: 30px;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>KyPay</h1>
+
+  <div>
+    <button class="btn" onclick="toggleForm()">+ Nouveau virement</button>
+    <div id="form" style="display:none; margin-top: 10px;">
+      <input type="text" id="recipientPseudo" placeholder="Pseudo du destinataire">
+      <input type="number" id="amount" step="0.01" placeholder="Montant (ex: 15.00)">
+      <button class="btn" onclick="sendTransfer()">Envoyer</button>
+    </div>
+  </div>
+
+  <h2 style="margin-top: 30px;">Votre fortune:</h2>
+  <div class="card" id="balance">Chargement...</div>
+
+  <h2>Notifications</h2>
+  <div id="notifications"></div>
+
+  <script>
+    // CONFIG FIREBASE
+    const firebaseConfig = {
+      apiKey: "TA_CLÉ",
+      authDomain: "TON_PROJET.firebaseapp.com",
+      databaseURL: "https://TON_PROJET.firebaseio.com",
+      projectId: "TON_PROJET",
+      storageBucket: "TON_PROJET.appspot.com",
+      messagingSenderId: "XXX",
+      appId: "XXX"
+    };
+    firebase.initializeApp(firebaseConfig);
+
+    const auth = firebase.auth();
+    const db = firebase.database();
+
+    let currentUserId = null;
+    let currentPseudo = null;
+    let currentBalance = 0;
+
+    auth.onAuthStateChanged(async (user) => {
+      if (user) {
+        currentUserId = user.uid;
+        const snapshot = await db.ref(`users/${user.uid}`).once('value');
+        const userData = snapshot.val();
+        currentPseudo = userData.pseudo;
+        currentBalance = userData.balance || 0;
+        updateBalanceDisplay();
+        listenToIncomingTransfers();
+      } else {
+        alert("Non connecté !");
+        window.location.href = "index.html";
+      }
+    });
+
+    function toggleForm() {
+      const form = document.getElementById('form');
+      form.style.display = form.style.display === "none" ? "block" : "none";
+    }
+
+    function updateBalanceDisplay() {
+      document.getElementById('balance').textContent = `${currentBalance.toFixed(2)} ‡`;
+    }
+
+    async function sendTransfer() {
+      const recipientPseudo = document.getElementById('recipientPseudo').value.trim();
+      const amount = parseFloat(document.getElementById('amount').value.trim());
+
+      if (!recipientPseudo || isNaN(amount) || amount <= 0) {
+        alert("Veuillez remplir tous les champs correctement.");
+        return;
+      }
+
+      if (amount > currentBalance) {
+        alert("Fonds insuffisants !");
+        return;
+      }
+
+      // Trouver le destinataire
+      const usersSnap = await db.ref('users').once('value');
+      let recipientId = null;
+
+      usersSnap.forEach(child => {
+        if (child.val().pseudo === recipientPseudo) {
+          recipientId = child.key;
+        }
+      });
+
+      if (!recipientId) {
+        alert("Destinataire introuvable !");
+        return;
+      }
+
+      // Exécuter le virement
+      const updates = {};
+      updates[`users/${currentUserId}/balance`] = currentBalance - amount;
+      updates[`users/${recipientId}/balance`] = firebase.database.ServerValue.increment(amount);
+
+      await db.ref().update(updates);
+
+      // Mise à jour locale
+      currentBalance -= amount;
+      updateBalanceDisplay();
+
+      // Notification pour l’envoyeur
+      addNotification(`Vous avez fait un virement de ${amount.toFixed(2)} ‡ à ${recipientPseudo}.`);
+
+      // Notification pour le receveur (dans sa base)
+      const notifRef = db.ref(`users/${recipientId}/notifications`).push();
+      notifRef.set(`Vous avez reçu un virement de ${amount.toFixed(2)} ‡ de la part de ${currentPseudo}!`);
+
+      document.getElementById('recipientPseudo').value = '';
+      document.getElementById('amount').value = '';
+      toggleForm();
+    }
+
+    function addNotification(msg) {
+      const container = document.getElementById('notifications');
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.textContent = msg;
+      container.prepend(card);
+    }
+
+    function listenToIncomingTransfers() {
+      const notifRef = db.ref(`users/${currentUserId}/notifications`);
+      notifRef.on('child_added', (snapshot) => {
+        const message = snapshot.val();
+        addNotification(message);
+        // On peut supprimer la notif une fois affichée si on veut
+        notifRef.child(snapshot.key).remove();
+      });
+    }
+  </script>
+</body>
+</html>
