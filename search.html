@@ -2,154 +2,125 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Recherche - Kylita</title>
+  <title>Kylita - Rechercher un son</title>
   <style>
     body {
-      background: url('background.jpg') no-repeat center center fixed;
-      background-size: cover;
-      font-family: sans-serif;
-      margin: 0;
-      padding: 0;
+      background-color: #121212;
       color: white;
+      font-family: sans-serif;
+      padding: 20px;
     }
-    header {
-      display: flex;
-      justify-content: space-between;
-      padding: 10px 20px;
-      font-weight: bold;
-      background: rgba(0, 0, 0, 0.5);
-    }
-    .search-container {
-      margin: 50px auto;
-      text-align: center;
-      width: 90%;
-    }
-    .search-bar {
-      width: 100%;
-      padding: 15px;
-      font-size: 18px;
+    input, button, select {
+      padding: 10px;
+      margin: 5px;
       border: none;
       border-radius: 5px;
     }
-    .results {
-      margin-top: 20px;
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-    }
     .result {
-      background: rgba(0, 102, 204, 0.8);
-      border-radius: 10px;
+      background-color: #1e1e1e;
       padding: 15px;
-      cursor: pointer;
+      margin-top: 10px;
+      border-radius: 10px;
     }
-    .result:hover {
-      background: rgba(0, 102, 204, 1);
-    }
-    .popup {
-      position: fixed;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      background: #007bff;
-      color: white;
-      padding: 20px;
-      border-radius: 15px;
-      display: none;
-      z-index: 999;
-    }
-    .popup button {
-      margin: 10px;
-      padding: 10px;
+    .playlist-select {
+      margin-top: 10px;
     }
   </style>
 </head>
 <body>
-  <header>
-    <div>Kylita</div>
-    <div>Mon Compte</div>
-  </header>
+  <h1>🔎 Rechercher un son</h1>
+  <input type="text" id="searchInput" placeholder="Titre ou artiste...">
+  <button onclick="search()">Rechercher</button>
+  <div id="results"></div>
 
-  <div class="search-container">
-    <input type="text" id="search" class="search-bar" placeholder="Rechercher une musique...">
-    <div class="results" id="results"></div>
-  </div>
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+    import {
+      getDatabase, ref, push, onValue
+    } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+    import {
+      getAuth, onAuthStateChanged
+    } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
-  <div class="popup" id="popup">
-    <div id="popup-title"></div>
-    <audio id="audio-player" controls style="width: 100%; margin-top: 10px;"></audio>
-    <button onclick="closePopup()">Fermer</button>
-  </div>
+    const firebaseConfig = {
+      apiKey: "AIzaSyDyWu4TI4PIRXfeb7yqt0WIGClgu10IjkM",
+      authDomain: "kylita-f2923.firebaseapp.com",
+      databaseURL: "https://kylita-f2923-default-rtdb.firebaseio.com",
+      projectId: "kylita-f2923",
+      storageBucket: "kylita-f2923.appspot.com",
+      messagingSenderId: "431823530994",
+      appId: "1:431823530994:web:88a07e633751686e5ad96b"
+    };
 
-  <script>
-    const searchInput = document.getElementById('search');
-    const resultsContainer = document.getElementById('results');
-    const popup = document.getElementById('popup');
-    const popupTitle = document.getElementById('popup-title');
-    const audioPlayer = document.getElementById('audio-player');
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+    const auth = getAuth();
 
-    let timeout = null;
+    let currentUser = null;
+    let userPlaylists = {};
 
-    searchInput.addEventListener('input', () => {
-      clearTimeout(timeout);
-      timeout = setTimeout(() => {
-        const query = searchInput.value.trim();
-        if (query.length < 2) return;
-        searchMusic(query);
-      }, 500);
+    onAuthStateChanged(auth, user => {
+      if (user) {
+        currentUser = user;
+        const playlistsRef = ref(db, 'users/' + user.uid + '/playlists');
+        onValue(playlistsRef, snapshot => {
+          userPlaylists = snapshot.val() || {};
+        });
+      }
     });
 
-    async function searchMusic(query) {
-      resultsContainer.innerHTML = 'Recherche...';
-      const url = `https://archive.org/advancedsearch.php?q=collection:(opensource_audio)+AND+title:(${encodeURIComponent(query)})&fl[]=identifier&rows=10&output=json`;
+    async function search() {
+      const query = document.getElementById("searchInput").value;
+      const resultsDiv = document.getElementById("results");
+      resultsDiv.innerHTML = "Chargement...";
 
-      try {
-        const res = await fetch(url);
-        const data = await res.json();
-        const docs = data.response.docs;
+      const res = await fetch(`https://archive.org/advancedsearch.php?q=${encodeURIComponent(query)}+AND+mediatype:(audio)&fl[]=identifier,title,creator&rows=10&page=1&output=json`);
+      const data = await res.json();
+      resultsDiv.innerHTML = "";
 
-        if (docs.length === 0) {
-          resultsContainer.innerHTML = 'Aucun résultat.';
-          return;
-        }
+      for (const doc of data.response.docs) {
+        const audioURL = `https://archive.org/download/${doc.identifier}/${doc.identifier}_64kb.mp3`;
 
-        resultsContainer.innerHTML = '';
-
-        for (const doc of docs) {
-          const identifier = doc.identifier;
-          const filesUrl = `https://archive.org/metadata/${identifier}`;
-
-          const filesRes = await fetch(filesUrl);
-          const filesData = await filesRes.json();
-          const mp3 = filesData.files.find(f => f.name.endsWith('.mp3') || f.name.endsWith('.m4a'));
-
-          if (!mp3) continue;
-
-          const title = mp3.title || identifier;
-          const author = filesData.metadata.creator || 'Inconnu';
-
-          const div = document.createElement('div');
-          div.className = 'result';
-          div.innerHTML = `<strong>${title}</strong><br>${author}`;
-          div.onclick = () => {
-            popupTitle.textContent = title;
-            audioPlayer.src = `https://archive.org/download/${identifier}/${mp3.name}`;
-            audioPlayer.play();
-            popup.style.display = 'block';
-          };
-
-          resultsContainer.appendChild(div);
-        }
-      } catch (e) {
-        resultsContainer.innerHTML = 'Erreur lors de la recherche.';
-        console.error(e);
+        const div = document.createElement("div");
+        div.className = "result";
+        div.innerHTML = `
+          <h3>${doc.title}</h3>
+          <p>${doc.creator || "Inconnu"}</p>
+          <audio controls src="${audioURL}"></audio>
+          <br>
+          <button onclick='showPlaylistDropdown(${JSON.stringify({
+            title: doc.title,
+            artist: doc.creator || "Inconnu",
+            url: audioURL
+          })})'>➕ Ajouter à une playlist</button>
+        `;
+        resultsDiv.appendChild(div);
       }
     }
 
-    function closePopup() {
-      popup.style.display = 'none';
-      audioPlayer.pause();
+    window.showPlaylistDropdown = (track) => {
+      const dropdown = document.createElement("select");
+      dropdown.className = "playlist-select";
+      dropdown.innerHTML = '<option disabled selected>Choisir une playlist</option>';
+
+      for (let name in userPlaylists) {
+        const option = document.createElement("option");
+        option.value = name;
+        option.innerText = name;
+        dropdown.appendChild(option);
+      }
+
+      dropdown.onchange = () => {
+        const selectedPlaylist = dropdown.value;
+        if (!currentUser) return alert("Non connecté.");
+
+        const refPath = `users/${currentUser.uid}/playlists/${selectedPlaylist}`;
+        push(ref(db, refPath), track);
+        alert(`Ajouté à la playlist ${selectedPlaylist} !`);
+        dropdown.remove();
+      };
+
+      document.body.appendChild(dropdown);
     }
   </script>
 </body>
