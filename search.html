@@ -95,7 +95,6 @@
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
   <script>
-    // CONFIG FIREBASE KYLITA
     const firebaseConfig = {
       apiKey: "AIzaSyDyWu4TI4PIRXfeb7yqt0WIGClgu10IjkM",
       authDomain: "kylita-f2923.firebaseapp.com",
@@ -113,13 +112,6 @@
     const searchInput = document.getElementById("searchInput");
     const resultsDiv = document.getElementById("results");
 
-    let playlists = {};
-
-    // Charger les playlists une seule fois
-    firebase.database().ref("playlists").on("value", (snap) => {
-      playlists = snap.val() || {};
-    });
-
     searchInput.addEventListener("input", async () => {
       const query = searchInput.value.trim();
       if (!query) {
@@ -127,7 +119,7 @@
         return;
       }
 
-      const response = await fetch(`https://archive.org/advancedsearch.php?q=${encodeURIComponent(query)}+AND+(format:mp3+OR+format:ogg+OR+format:mp4)&fl[]=identifier&rows=10&page=1&output=json`);
+      const response = await fetch(`https://archive.org/advancedsearch.php?q=${encodeURIComponent(query)}+AND+mediatype:(audio)&fl[]=identifier&rows=10&page=1&output=json`);
       const data = await response.json();
 
       resultsDiv.innerHTML = "";
@@ -135,7 +127,7 @@
       for (const doc of data.response.docs) {
         const id = doc.identifier;
         const meta = await fetch(`https://archive.org/metadata/${id}`).then(r => r.json());
-        const files = meta.files.filter(f => f.name.endsWith(".mp3") || f.name.endsWith(".m4a") || f.name.endsWith(".ogg"));
+        const files = meta.files.filter(f => f.name.match(/\.(mp3|ogg|m4a|flac|wav)$/i));
 
         if (files.length === 0) continue;
 
@@ -153,28 +145,53 @@
             <audio controls src="${url}" preload="none"></audio><br>
             <button class="add-to-playlist">Ajouter à une playlist</button>
             <div class="playlist-select">
-              <select>
-                ${Object.keys(playlists).map(p => `<option value="${p}">${p}</option>`).join("")}
-              </select>
+              <select></select>
               <button class="confirm-add">OK</button>
             </div>
           </div>
         `;
 
-        // Bouton "Ajouter à une playlist"
         const btn = div.querySelector(".add-to-playlist");
         const dropdown = div.querySelector(".playlist-select");
-        btn.onclick = () => {
+        const select = dropdown.querySelector("select");
+        const okBtn = dropdown.querySelector(".confirm-add");
+
+        // Remplir le menu déroulant lors du clic
+        btn.onclick = async () => {
           dropdown.style.display = dropdown.style.display === "block" ? "none" : "block";
+
+          // Vider puis remplir la liste
+          select.innerHTML = "";
+          const snap = await firebase.database().ref("playlists").once("value");
+          const playlists = snap.val();
+
+          if (!playlists) {
+            select.innerHTML = `<option disabled>Aucune playlist</option>`;
+            return;
+          }
+
+          Object.keys(playlists).forEach(name => {
+            const opt = document.createElement("option");
+            opt.value = name;
+            opt.textContent = name;
+            select.appendChild(opt);
+          });
         };
 
-        // Bouton OK dans la sélection
-        const okBtn = div.querySelector(".confirm-add");
+        // Bouton OK
         okBtn.onclick = () => {
-          const select = div.querySelector("select");
           const chosen = select.value;
-          if (!chosen) return;
-          firebase.database().ref("playlists/" + chosen).push({ url, title, artist });
+          if (!chosen) {
+            alert("Aucune playlist sélectionnée !");
+            return;
+          }
+
+          firebase.database().ref("playlists/" + chosen).push({
+            url,
+            title,
+            artist
+          });
+
           alert(`Ajouté à la playlist "${chosen}"`);
           dropdown.style.display = "none";
         };
