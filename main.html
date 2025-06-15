@@ -2,187 +2,212 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
-  <title>Kydollar - Virements</title>
+  <title>KykyBank</title>
+  <link rel="icon" href="/icons/icon-192.png">
+  <meta name="theme-color" content="#000000">
   <style>
-    body {
+    * {
+      box-sizing: border-box;
       margin: 0;
-      padding: 20px;
+      padding: 0;
       font-family: 'Segoe UI', sans-serif;
-      background: url('https://images.unsplash.com/photo-1506744038136-46273834b3fb') no-repeat center center fixed;
-      background-size: cover;
+    }
+
+    body, html {
+      height: 100%;
+      background: linear-gradient(to right, #1e3c72, #2a5298);
       color: white;
+      display: flex;
+      justify-content: center;
+      align-items: center;
     }
 
-    .button {
-      background-color: #007bff;
-      border: none;
-      color: white;
-      padding: 15px 25px;
-      text-align: center;
-      font-size: 1.1em;
-      border-radius: 20px;
-      cursor: pointer;
-      margin-bottom: 20px;
-    }
-
-    .button:hover {
-      background-color: #0056b3;
-    }
-
-    .form-container {
-      display: none;
-      margin-bottom: 20px;
-    }
-
-    input {
-      padding: 10px;
-      border-radius: 8px;
-      border: none;
-      margin-right: 10px;
-      width: 150px;
-    }
-
-    #fortune {
-      font-size: 1.3em;
-      margin-bottom: 20px;
-      background: rgba(0,0,0,0.4);
-      padding: 15px;
-      border-radius: 10px;
-    }
-
-    .notification-card {
+    .container {
       background: rgba(255, 255, 255, 0.1);
-      border-left: 5px solid #00ccff;
-      margin-bottom: 10px;
-      padding: 10px;
-      border-radius: 10px;
-      backdrop-filter: blur(5px);
+      backdrop-filter: blur(10px);
+      border-radius: 20px;
+      padding: 40px;
+      width: 90%;
+      max-width: 500px;
+      text-align: center;
+      box-shadow: 0 0 20px rgba(0,0,0,0.4);
     }
+
+    h1 {
+      font-size: 2.2em;
+      margin-bottom: 10px;
+    }
+
+    p {
+      font-size: 1.2em;
+      margin-bottom: 30px;
+    }
+
+    #solde {
+      font-size: 2.5em;
+      margin-bottom: 20px;
+    }
+
+    button {
+      padding: 15px 30px;
+      font-size: 1em;
+      border: none;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.15);
+      color: white;
+      cursor: pointer;
+      transition: 0.3s;
+    }
+
+    button:hover {
+      background: rgba(255, 255, 255, 0.3);
+    }
+
+    /* Popup virement */
+    .popup {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%) scale(0);
+      background: rgba(0,0,0,0.8);
+      padding: 30px;
+      border-radius: 20px;
+      box-shadow: 0 0 20px rgba(0,0,0,0.6);
+      z-index: 999;
+      width: 90%;
+      max-width: 400px;
+      transition: 0.3s;
+    }
+
+    .popup.active {
+      transform: translate(-50%, -50%) scale(1);
+    }
+
+    .popup h2 {
+      margin-bottom: 20px;
+    }
+
+    .popup input {
+      width: 100%;
+      padding: 12px;
+      margin-bottom: 15px;
+      border: none;
+      border-radius: 10px;
+      font-size: 1em;
+      outline: none;
+    }
+
+    .popup-buttons {
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .popup-buttons button {
+      width: 48%;
+    }
+
   </style>
 </head>
 <body>
 
-  <button class="button" id="toggleForm">+ Nouveau virement</button>
-
-  <div class="form-container" id="formContainer">
-    <input type="text" id="receiver" placeholder="Pseudo destinataire">
-    <input type="text" id="amount" placeholder="Montant (ex: 15.50)">
-    <button class="button" id="sendBtn">Envoyer</button>
+  <div class="container">
+    <h1>Bienvenue, <span id="pseudo"></span></h1>
+    <p>Votre solde actuel :</p>
+    <div id="solde">0‡</div>
+    <button onclick="openPopup()">Faire un virement</button>
   </div>
 
-  <div id="fortune">Votre fortune: <span id="balance">0.00 ‡</span></div>
+  <!-- Popup -->
+  <div class="popup" id="virementPopup">
+    <h2>Virement</h2>
+    <input type="text" id="destinataire" placeholder="Pseudo du destinataire">
+    <input type="number" id="montant" placeholder="Montant (en ‡)">
+    <div class="popup-buttons">
+      <button onclick="envoyerVirement()">Envoyer</button>
+      <button onclick="closePopup()">Annuler</button>
+    </div>
+  </div>
 
-  <h3>Notifications :</h3>
-  <div id="notifications"></div>
-
-  <!-- Firebase SDK -->
+  <!-- Firebase -->
   <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
-
   <script>
     const firebaseConfig = {
       apiKey: "AIzaSyDyWu4TI4PIRXfeb7yqt0WIGClgu10IjkM",
       authDomain: "kylita-f2923.firebaseapp.com",
       projectId: "kylita-f2923",
-      databaseURL: "https://kylita-f2923-default-rtdb.firebaseio.com",
       storageBucket: "kylita-f2923.appspot.com",
       messagingSenderId: "431823530994",
-      appId: "1:431823530994:web:88a07e633751686e5ad96b",
-      measurementId: "G-F4LLNWQJ16"
+      appId: "1:431823530994:web:88a07e633751686e5ad96b"
     };
 
     firebase.initializeApp(firebaseConfig);
-    const auth = firebase.auth();
     const db = firebase.database();
 
-    let currentUser = null;
     const pseudo = localStorage.getItem("pseudo");
+    if (!pseudo) window.location.href = "index.html";
+    document.getElementById("pseudo").textContent = pseudo;
 
-    if (!pseudo) {
-      alert("Utilisateur non connecté !");
-      window.location.href = "index.html";
+    const soldeElement = document.getElementById("solde");
+
+    const userRef = db.ref("users/" + pseudo);
+    userRef.once("value").then(snapshot => {
+      if (!snapshot.exists()) {
+        userRef.set({ solde: 500 });
+        soldeElement.textContent = "500‡";
+      } else {
+        const solde = snapshot.val().solde || 0;
+        soldeElement.textContent = `${solde}‡`;
+      }
+    });
+
+    // Virement
+    function openPopup() {
+      document.getElementById("virementPopup").classList.add("active");
     }
 
-    const balanceSpan = document.getElementById("balance");
-    const formContainer = document.getElementById("formContainer");
-    const notificationsDiv = document.getElementById("notifications");
+    function closePopup() {
+      document.getElementById("virementPopup").classList.remove("active");
+    }
 
-    document.getElementById("toggleForm").addEventListener("click", () => {
-      formContainer.style.display = formContainer.style.display === "none" ? "block" : "none";
-    });
+    function envoyerVirement() {
+      const destinataire = document.getElementById("destinataire").value.trim();
+      const montant = parseInt(document.getElementById("montant").value);
 
-    // Affichage de la fortune en temps réel
-    const balanceRef = db.ref("users/" + pseudo + "/balance");
-    balanceRef.on("value", (snap) => {
-      const balance = snap.val() || 0;
-      balanceSpan.innerText = `${parseFloat(balance).toFixed(2)} ‡`;
-    });
-
-    // Notifications en temps réel
-    const notifRef = db.ref("users/" + pseudo + "/notifications");
-    notifRef.on("child_added", (snap) => {
-      const text = snap.val();
-      const div = document.createElement("div");
-      div.className = "notification-card";
-      div.innerText = text;
-      notificationsDiv.prepend(div);
-    });
-
-    // Envoi d’un virement
-    document.getElementById("sendBtn").addEventListener("click", async () => {
-      const receiver = document.getElementById("receiver").value.trim();
-      const amountStr = document.getElementById("amount").value.trim();
-      const amount = parseFloat(amountStr);
-
-      if (!receiver || isNaN(amount) || amount <= 0) {
-        alert("Entrez un destinataire valide et un montant positif.");
+      if (!destinataire || isNaN(montant) || montant <= 0) {
+        alert("Champs invalides !");
         return;
       }
 
-      const senderRef = db.ref("users/" + pseudo);
-      const receiverRef = db.ref("users/" + receiver);
-
-      const senderSnap = await senderRef.once("value");
-      const senderData = senderSnap.val();
-
-      if (!senderData || senderData.balance === undefined) {
-        alert("Erreur : votre compte n’a pas de solde.");
+      if (destinataire === pseudo) {
+        alert("Impossible de vous envoyer de l'argent à vous-même !");
         return;
       }
 
-      const currentBalance = parseFloat(senderData.balance);
+      userRef.once("value").then(snapshot => {
+        const soldeActuel = snapshot.val().solde || 0;
+        if (soldeActuel < montant) {
+          alert("Solde insuffisant !");
+          return;
+        }
 
-      if (currentBalance < amount) {
-        alert("Vous n'avez pas assez de Kydollars.");
-        return;
-      }
+        const destRef = db.ref("users/" + destinataire);
+        destRef.once("value").then(destSnap => {
+          if (!destSnap.exists()) {
+            alert("Destinataire introuvable.");
+            return;
+          }
 
-      const receiverSnap = await receiverRef.once("value");
-      if (!receiverSnap.exists()) {
-        alert("Le destinataire n’existe pas.");
-        return;
-      }
+          // Débit et crédit
+          userRef.update({ solde: soldeActuel - montant });
+          destRef.update({ solde: (destSnap.val().solde || 0) + montant });
 
-      // Mise à jour des soldes
-      await senderRef.update({
-        balance: (currentBalance - amount).toFixed(2)
+          soldeElement.textContent = `${soldeActuel - montant}‡`;
+          alert("Virement effectué !");
+          closePopup();
+        });
       });
-
-      const receiverBalance = parseFloat(receiverSnap.val().balance || 0);
-      await receiverRef.update({
-        balance: (receiverBalance + amount).toFixed(2)
-      });
-
-      const timestamp = Date.now();
-
-      // Notifications
-      await db.ref("users/" + pseudo + "/notifications/" + timestamp).set(`Vous avez fait un virement de ${amount.toFixed(2)} ‡ à ${receiver}.`);
-      await db.ref("users/" + receiver + "/notifications/" + timestamp).set(`Vous avez reçu un virement de ${amount.toFixed(2)} ‡ de la part de ${pseudo} !`);
-
-      document.getElementById("receiver").value = "";
-      document.getElementById("amount").value = "";
-    });
+    }
   </script>
 
 </body>
