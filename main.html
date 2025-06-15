@@ -1,203 +1,296 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-  <meta charset="UTF-8">
-  <title>Recherche - Kylita</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Kylita</title>
   <style>
     body {
       margin: 0;
       font-family: sans-serif;
-      background: linear-gradient(120deg, #1d1f27, #3a3d4a);
+      background: linear-gradient(to bottom, black, #444);
       color: white;
-    }
-
-    header {
       display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+    }
+    h1 {
+      font-size: 3em;
+      margin: 20px;
+    }
+    h2 {
+      text-align: center;
+      margin: 0;
+      font-size: 2em;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+      padding: 40px;
+      flex-grow: 1;
+    }
+    .playlist {
+      background-color: #666;
+      padding: 30px;
+      border-radius: 10px;
+      text-align: center;
+      font-weight: bold;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .playlist.playing {
+      background-color: #007aff;
+    }
+    .btn-create {
+      margin: 0 auto 20px;
+      display: block;
+      padding: 10px 20px;
+      font-size: 1.2em;
+      background: blue;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    .popup {
+      position: fixed;
+      top: 100%;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: blue;
+      color: white;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      transition: top 0.4s ease;
+      z-index: 1000;
+    }
+    .popup.show {
+      top: 0;
+    }
+    .popup input {
+      padding: 10px;
+      font-size: 1.2em;
+      border: none;
+      border-radius: 5px;
+      margin-bottom: 20px;
+    }
+    .popup button {
+      margin: 5px;
+      padding: 10px 20px;
+      font-size: 1em;
+      background: white;
+      color: blue;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    .bottom-bar {
+      background: #000;
+      padding: 10px;
+      text-align: center;
+    }
+    .bottom-bar button {
+      background: blue;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 5px;
+      font-size: 1em;
+      cursor: pointer;
+    }
+    #nowPlayingBar {
+      position: fixed;
+      bottom: 60px;
+      left: 0;
+      right: 0;
+      background: #0055ff;
+      padding: 10px;
+      color: white;
+      font-size: 1em;
+      display: none;
       justify-content: space-between;
       align-items: center;
-      padding: 1rem;
-      background: rgba(0, 0, 0, 0.4);
     }
-
-    h1 {
-      margin: 0;
-      font-size: 2rem;
-    }
-
-    .search-bar {
-      width: 100%;
-      padding: 1rem;
-      box-sizing: border-box;
-    }
-
-    .search-bar input {
-      width: 100%;
-      padding: 1rem;
-      font-size: 1.2rem;
-      border-radius: 10px;
+    #nowPlayingBar .controls button {
+      background: none;
       border: none;
-    }
-
-    .results {
-      padding: 1rem;
-    }
-
-    .result {
-      background: #2c3e50;
-      border-radius: 10px;
-      padding: 1rem;
-      margin-bottom: 1rem;
-    }
-
-    .result-title {
-      font-weight: bold;
-    }
-
-    .result-artist {
-      font-style: italic;
-    }
-
-    .audio-controls {
-      margin-top: 0.5rem;
-    }
-
-    .playlist-select {
-      margin-top: 0.5rem;
-      display: none;
-    }
-
-    select, button {
-      margin-top: 5px;
-      padding: 5px 10px;
-      border-radius: 5px;
-      border: none;
-    }
-
-    button:hover {
-      cursor: pointer;
-      background: #3498db;
       color: white;
+      font-size: 1.2em;
+      cursor: pointer;
+      margin: 0 5px;
     }
   </style>
 </head>
 <body>
-  <header>
-    <h1>Kylita</h1>
-    <div id="user-info">Compte</div>
-  </header>
+  <h1>Kylita</h1>
+  <h2>Vos playlists</h2>
+  <div class="grid" id="playlistContainer"></div>
+  <button class="btn-create" onclick="openCreatePopup()">+ Créer une playlist</button>
 
-  <div class="search-bar">
-    <input type="text" id="searchInput" placeholder="Rechercher un son...">
+  <!-- Popup création playlist -->
+  <div class="popup" id="createPopup">
+    <input type="text" id="playlistNameInput" placeholder="Nom de la playlist" />
+    <div>
+      <button onclick="createPlaylist()">Valider</button>
+      <button onclick="closeCreatePopup()">Annuler</button>
+    </div>
   </div>
 
-  <div class="results" id="results"></div>
+  <!-- Popup lecture playlist -->
+  <div class="popup" id="playlistPopup">
+    <h2 id="popupTitle"></h2>
+    <button onclick="startPlaylist()">▶️ Lancer</button>
+    <ul id="songList"></ul>
+    <button onclick="closePlaylistPopup()">Fermer</button>
+  </div>
 
-  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
-  <script>
+  <!-- Now Playing Bar -->
+  <div id="nowPlayingBar">
+    <div>
+      <div id="nowPlayingTitle">Actuellement</div>
+      <strong id="nowPlayingSong">Titre</strong>
+    </div>
+    <div class="controls">
+      <button onclick="previousTrack()">⏮️</button>
+      <button onclick="togglePlayPause()">⏯️</button>
+      <button onclick="nextTrack()">⏭️</button>
+      <button onclick="restartTrack()">🔁</button>
+    </div>
+  </div>
+
+  <div class="bottom-bar">
+    <button onclick="location.href='search.html'">🔍 Rechercher</button>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+    import { getDatabase, ref, set, get, push, onValue, update } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+
     const firebaseConfig = {
-      apiKey: "AIzaSyDyWu4TI4PIRXfeb7yqt0WIGClgu10IjkM",
-      authDomain: "kylita-f2923.firebaseapp.com",
-      databaseURL: "https://kylita-f2923-default-rtdb.firebaseio.com",
-      projectId: "kylita-f2923",
-      storageBucket: "kylita-f2923.appspot.com",
-      messagingSenderId: "431823530994",
-      appId: "1:431823530994:web:88a07e633751686e5ad96b",
-      measurementId: "G-F4LLNWQJ16"
+      apiKey: "YOUR_API_KEY",
+      authDomain: "YOUR_AUTH_DOMAIN",
+      databaseURL: "YOUR_DATABASE_URL",
+      projectId: "YOUR_PROJECT_ID",
+      storageBucket: "YOUR_STORAGE_BUCKET",
+      messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+      appId: "YOUR_APP_ID"
     };
 
-    firebase.initializeApp(firebaseConfig);
-    const db = firebase.database();
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
 
-    const searchInput = document.getElementById("searchInput");
-    const resultsDiv = document.getElementById("results");
+    const playlistContainer = document.getElementById("playlistContainer");
+    const createPopup = document.getElementById("createPopup");
+    const playlistPopup = document.getElementById("playlistPopup");
+    const popupTitle = document.getElementById("popupTitle");
+    const playlistNameInput = document.getElementById("playlistNameInput");
+    const songList = document.getElementById("songList");
+    const nowPlayingBar = document.getElementById("nowPlayingBar");
+    const nowPlayingSong = document.getElementById("nowPlayingSong");
 
-    searchInput.addEventListener("input", async () => {
-      const query = searchInput.value.trim();
-      if (!query) {
-        resultsDiv.innerHTML = "";
-        return;
+    let currentPlaylist = null;
+    let currentIndex = 0;
+    let audio = new Audio();
+
+    function openCreatePopup() {
+      createPopup.classList.add("show");
+    }
+
+    function closeCreatePopup() {
+      createPopup.classList.remove("show");
+    }
+
+    function createPlaylist() {
+      const name = playlistNameInput.value.trim();
+      if (!name) return;
+      const newRef = push(ref(db, "playlists"));
+      set(newRef, { name, songs: [] });
+      closeCreatePopup();
+    }
+
+    function loadPlaylists() {
+      onValue(ref(db, "playlists"), (snapshot) => {
+        playlistContainer.innerHTML = "";
+        snapshot.forEach((child) => {
+          const data = child.val();
+          const div = document.createElement("div");
+          div.className = "playlist";
+          div.textContent = data.name;
+          div.onclick = () => openPlaylistPopup(child.key, data);
+          playlistContainer.appendChild(div);
+        });
+      });
+    }
+
+    function openPlaylistPopup(key, data) {
+      popupTitle.textContent = data.name;
+      currentPlaylist = { key, data };
+      currentIndex = 0;
+      songList.innerHTML = "";
+      (data.songs || []).forEach((song, i) => {
+        const li = document.createElement("li");
+        li.textContent = song.title;
+        songList.appendChild(li);
+      });
+      playlistPopup.classList.add("show");
+    }
+
+    function closePlaylistPopup() {
+      playlistPopup.classList.remove("show");
+    }
+
+    function startPlaylist() {
+      if (!currentPlaylist) return;
+      playTrack(currentIndex);
+      nowPlayingBar.style.display = "flex";
+      closePlaylistPopup();
+    }
+
+    function playTrack(index) {
+      const songs = currentPlaylist.data.songs;
+      if (!songs || index >= songs.length) return;
+      const song = songs[index];
+      audio.src = song.url;
+      audio.play();
+      nowPlayingSong.textContent = song.title;
+      currentIndex = index;
+      update(ref(db, `playlists/${currentPlaylist.key}/state`), {
+        currentIndex: index,
+        paused: false,
+        timestamp: 0
+      });
+    }
+
+    function togglePlayPause() {
+      if (audio.paused) {
+        audio.play();
+      } else {
+        audio.pause();
       }
+    }
 
-      const response = await fetch(`https://archive.org/advancedsearch.php?q=${encodeURIComponent(query)}+AND+mediatype:(audio)&fl[]=identifier&rows=10&page=1&output=json`);
-      const data = await response.json();
+    function nextTrack() {
+      playTrack(currentIndex + 1);
+    }
 
-      resultsDiv.innerHTML = "";
+    function previousTrack() {
+      if (currentIndex > 0) playTrack(currentIndex - 1);
+    }
 
-      for (const doc of data.response.docs) {
-        const id = doc.identifier;
-        const meta = await fetch(`https://archive.org/metadata/${id}`).then(r => r.json());
+    function restartTrack() {
+      audio.currentTime = 0;
+    }
 
-        // On autorise toutes les extensions audio usuelles
-        const files = meta.files.filter(f => f.name.match(/\.(mp3|ogg|m4a|flac|wav|aac|aiff|wma)$/i));
-
-        if (files.length === 0) continue;
-
-        const file = files[0];
-        const url = `https://archive.org/download/${id}/${file.name}`;
-        const title = meta.metadata.title || file.name;
-        const artist = meta.metadata.creator || "Inconnu";
-
-        const div = document.createElement("div");
-        div.className = "result";
-        div.innerHTML = `
-          <div class="result-title">${title}</div>
-          <div class="result-artist">${artist}</div>
-          <div class="audio-controls">
-            <audio controls src="${url}" preload="none"></audio><br>
-            <button class="add-to-playlist">Ajouter à une playlist</button>
-            <div class="playlist-select">
-              <select></select>
-              <button class="confirm-add">OK</button>
-            </div>
-          </div>
-        `;
-
-        const btn = div.querySelector(".add-to-playlist");
-        const dropdown = div.querySelector(".playlist-select");
-        const select = dropdown.querySelector("select");
-        const okBtn = dropdown.querySelector(".confirm-add");
-
-        // Remplir le menu déroulant lors du clic
-        btn.onclick = async () => {
-          dropdown.style.display = dropdown.style.display === "block" ? "none" : "block";
-          select.innerHTML = "";
-          const snap = await firebase.database().ref("playlists").once("value");
-          const playlists = snap.val();
-
-          if (!playlists) {
-            select.innerHTML = `<option disabled>Aucune playlist</option>`;
-            return;
-          }
-
-          Object.keys(playlists).forEach(name => {
-            const opt = document.createElement("option");
-            opt.value = name;
-            opt.textContent = name;
-            select.appendChild(opt);
-          });
-        };
-
-        okBtn.onclick = () => {
-          const chosen = select.value;
-          if (!chosen) {
-            alert("Aucune playlist sélectionnée !");
-            return;
-          }
-
-          firebase.database().ref("playlists/" + chosen).push({
-            url,
-            title,
-            artist
-          });
-
-          alert(`Ajouté à la playlist "${chosen}"`);
-          dropdown.style.display = "none";
-        };
-
-        resultsDiv.appendChild(div);
-      }
+    audio.addEventListener("ended", () => {
+      nextTrack();
     });
+
+    // Initial load
+    loadPlaylists();
   </script>
 </body>
 </html>
