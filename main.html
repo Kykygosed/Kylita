@@ -145,6 +145,9 @@
       <button onclick="envoyerVirement()">Envoyer</button>
       <button onclick="closePopup()">Annuler</button>
     </div>
+
+  <div id="listeNotifications"></div>
+
   </div>
 
   <!-- Notification -->
@@ -155,102 +158,194 @@
   <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
   <script>
     const firebaseConfig = {
-      apiKey: "AIzaSyDyWu4TI4PIRXfeb7yqt0WIGClgu10IjkM",
-      authDomain: "kylita-f2923.firebaseapp.com",
-      projectId: "kylita-f2923",
-      storageBucket: "kylita-f2923.appspot.com",
-      messagingSenderId: "431823530994",
-      appId: "1:431823530994:web:88a07e633751686e5ad96b"
-    };
+  apiKey: "AIzaSyDyWu4TI4PIRXfeb7yqt0WIGClgu10IjkM",
+  authDomain: "kylita-f2923.firebaseapp.com",
+  projectId: "kylita-f2923",
+  storageBucket: "kylita-f2923.appspot.com",
+  messagingSenderId: "431823530994",
+  appId: "1:431823530994:web:88a07e633751686e5ad96b"
+};
 
-    firebase.initializeApp(firebaseConfig);
-    const db = firebase.database();
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
 
-    const pseudo = localStorage.getItem("pseudo");
-    if (!pseudo) window.location.href = "index.html";
-    document.getElementById("pseudo").textContent = pseudo;
-    const soldeElement = document.getElementById("solde");
-    const userRef = db.ref("users/" + pseudo);
+const pseudo = localStorage.getItem("pseudo");
+if (!pseudo) window.location.href = "index.html";
+document.getElementById("pseudo").textContent = pseudo;
 
-    // Solde en temps réel
-    userRef.on("value", snapshot => {
-      const solde = snapshot.val()?.solde ?? 0;
-      soldeElement.textContent = `${solde}‡`;
+const soldeElement = document.getElementById("solde");
+const userRef = db.ref("users/" + pseudo);
+const notificationsRef = db.ref("notifications");
+
+// Initialisation du solde si utilisateur nouveau
+userRef.once("value").then(snapshot => {
+  if (!snapshot.exists()) {
+    userRef.set({ solde: 500 });
+    soldeElement.textContent = "500‡";
+  } else {
+    const solde = snapshot.val().solde || 0;
+    soldeElement.textContent = `${solde}‡`;
+  }
+});
+
+// Fonction pour afficher une notification (format carte) dans la liste à gauche
+function afficherNotificationCard(data) {
+  // Container principal des notifications à gauche (on crée si pas présent)
+  let listeNotif = document.getElementById("listeNotifications");
+  if (!listeNotif) {
+    listeNotif = document.createElement("div");
+    listeNotif.id = "listeNotifications";
+    // Style de la liste notifications sur la gauche, scrollable
+    Object.assign(listeNotif.style, {
+      position: "fixed",
+      top: "10px",
+      left: "10px",
+      width: "320px",
+      maxHeight: "90vh",
+      overflowY: "auto",
+      zIndex: "1000",
+      color: "white",
+      fontFamily: "'Segoe UI', sans-serif",
     });
+    document.body.appendChild(listeNotif);
+  }
 
-    // Affiche une notification
-    function showNotification(message) {
-      const notif = document.getElementById("notification");
-      notif.textContent = message;
-      notif.classList.add("show");
-      setTimeout(() => notif.classList.remove("show"), 4000);
+  // Création de la carte notification
+  const card = document.createElement("div");
+  card.style.background = "rgba(0,0,0,0.7)";
+  card.style.borderRadius = "12px";
+  card.style.padding = "15px";
+  card.style.marginBottom = "15px";
+  card.style.boxShadow = "0 2px 8px rgba(0,0,0,0.5)";
+  card.style.display = "flex";
+  card.style.flexDirection = "column";
+  card.style.alignItems = "center";
+
+  // Image en haut de la carte selon le type (virement envoyé ou reçu)
+  const img = document.createElement("img");
+  img.style.width = "80px";
+  img.style.height = "80px";
+  img.style.objectFit = "contain";
+  img.style.marginBottom = "10px";
+
+  // Texte principal
+  const texte = document.createElement("div");
+  texte.style.textAlign = "center";
+  texte.style.fontSize = "1.1em";
+  texte.style.marginBottom = "8px";
+
+  // Texte date et temps en petit
+  const petitTexte = document.createElement("div");
+  petitTexte.style.fontSize = "0.75em";
+  petitTexte.style.color = "#ccc";
+  petitTexte.style.textAlign = "center";
+
+  // Selon type, on met l'image et le texte correspondant
+  if (data.type === "envoi") {
+    img.src = data.imageUrl || "https://cdn-icons-png.flaticon.com/512/190/190411.png"; // ex icon virement envoyé
+    texte.textContent = `Vous avez effectué un virement de ${data.montant}‡ à ${data.destinataire}.`;
+    petitTexte.textContent = `Le ${new Date(data.date).toLocaleString()} - Durée : ${data.duree}s`;
+  } else if (data.type === "reception") {
+    img.src = data.imageUrl || "https://cdn-icons-png.flaticon.com/512/190/190406.png"; // ex icon virement reçu
+    texte.textContent = `Vous avez reçu un virement de ${data.montant}‡ de la part de ${data.emetteur} !!`;
+    petitTexte.textContent = `Le ${new Date(data.date).toLocaleString()}`;
+  } else {
+    // Notification générique simple texte si besoin
+    texte.textContent = data.message || "Notification inconnue";
+    petitTexte.textContent = "";
+  }
+
+  card.appendChild(img);
+  card.appendChild(texte);
+  card.appendChild(petitTexte);
+  listeNotif.appendChild(card);
+}
+
+// Charger toutes les notifications Firebase au chargement et les afficher
+notificationsRef.once("value").then(snapshot => {
+  snapshot.forEach(child => {
+    afficherNotificationCard(child.val());
+  });
+});
+
+// Gestion popup virement
+function openPopup() {
+  document.getElementById("virementPopup").classList.add("active");
+}
+
+function closePopup() {
+  document.getElementById("virementPopup").classList.remove("active");
+}
+
+// Envoyer un virement
+function envoyerVirement() {
+  const destinataire = document.getElementById("destinataire").value.trim();
+  const montant = parseInt(document.getElementById("montant").value);
+
+  if (!destinataire || isNaN(montant) || montant <= 0) {
+    alert("Champs invalides !");
+    return;
+  }
+
+  if (destinataire === pseudo) {
+    alert("Impossible de vous envoyer de l'argent à vous-même !");
+    return;
+  }
+
+  userRef.once("value").then(snapshot => {
+    const soldeActuel = snapshot.val().solde || 0;
+    if (soldeActuel < montant) {
+      alert("Solde insuffisant !");
+      return;
     }
 
-    // Écoute des virements reçus
-    const notifRef = db.ref("notifications/" + pseudo);
-    notifRef.on("child_added", snapshot => {
-      const data = snapshot.val();
-      if (data && data.type === "virement") {
-        showNotification(`💸 ${data.from} vous a envoyé ${data.amount}‡`);
-        snapshot.ref.remove(); // Supprime la notification une fois affichée
-      }
-    });
-
-    // Virement
-    function openPopup() {
-      document.getElementById("virementPopup").classList.add("active");
-    }
-
-    function closePopup() {
-      document.getElementById("virementPopup").classList.remove("active");
-    }
-
-    function envoyerVirement() {
-      const destinataire = document.getElementById("destinataire").value.trim();
-      const montant = parseInt(document.getElementById("montant").value);
-
-      if (!destinataire || isNaN(montant) || montant <= 0) {
-        alert("Champs invalides !");
+    const destRef = db.ref("users/" + destinataire);
+    destRef.once("value").then(destSnap => {
+      if (!destSnap.exists()) {
+        alert("Destinataire introuvable.");
         return;
       }
 
-      if (destinataire === pseudo) {
-        alert("Impossible de vous envoyer de l'argent à vous-même !");
-        return;
-      }
+      // Calcul de la durée du virement (simulation)
+      const startTime = Date.now();
 
-      userRef.once("value").then(snapshot => {
-        const soldeActuel = snapshot.val()?.solde || 0;
-        if (soldeActuel < montant) {
-          alert("Solde insuffisant !");
-          return;
-        }
+      // Mise à jour du solde
+      userRef.update({ solde: soldeActuel - montant });
+      destRef.update({ solde: (destSnap.val().solde || 0) + montant }).then(() => {
+        const endTime = Date.now();
+        const duree = ((endTime - startTime) / 1000).toFixed(2);
 
-        const destRef = db.ref("users/" + destinataire);
-        destRef.once("value").then(destSnap => {
-          if (!destSnap.exists()) {
-            alert("Destinataire introuvable.");
-            return;
-          }
+        soldeElement.textContent = `${soldeActuel - montant}‡`;
 
-          // Débit et crédit
-          userRef.update({ solde: soldeActuel - montant });
-          destRef.update({ solde: (destSnap.val().solde || 0) + montant });
+        // Créer notification de virement envoyé
+        const notifEnvoi = {
+          type: "envoi",
+          montant: montant,
+          destinataire: destinataire,
+          date: endTime,
+          duree: duree,
+          imageUrl: "https://cdn-icons-png.flaticon.com/512/190/190411.png" // icône virement envoyé
+        };
+        notificationsRef.push(notifEnvoi);
+        afficherNotificationCard(notifEnvoi);
 
-          // Notification
-          const notifRef = db.ref("notifications/" + destinataire).push();
-          notifRef.set({
-            type: "virement",
-            from: pseudo,
-            amount: montant,
-            time: Date.now()
-          });
+        // Créer notification de virement reçu pour destinataire
+        const notifReception = {
+          type: "reception",
+          montant: montant,
+          emetteur: pseudo,
+          date: endTime,
+          imageUrl: "https://cdn-icons-png.flaticon.com/512/190/190406.png" // icône virement reçu
+        };
+        db.ref("notifications").push(notifReception);
 
-          alert("Virement effectué !");
-          closePopup();
-        });
+        alert("Virement effectué !");
+        closePopup();
       });
-    }
+    });
+  });
+}
+
   </script>
 
 </body>
