@@ -167,130 +167,98 @@
   </div>
 
   <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-    import { getDatabase, ref, set, get, push, onValue, update } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+  // Initialisation Firebase
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+  import { getDatabase, ref, push, set, onValue } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
-    const firebaseConfig = {
-      apiKey: "YOUR_API_KEY",
-      authDomain: "YOUR_AUTH_DOMAIN",
-      databaseURL: "YOUR_DATABASE_URL",
-      projectId: "YOUR_PROJECT_ID",
-      storageBucket: "YOUR_STORAGE_BUCKET",
-      messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
-      appId: "YOUR_APP_ID"
-    };
+  const firebaseConfig = {
+    apiKey: "YOUR_API_KEY",
+    authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+    databaseURL: "https://YOUR_PROJECT_ID.firebaseio.com",
+    projectId: "YOUR_PROJECT_ID",
+    storageBucket: "YOUR_PROJECT_ID.appspot.com",
+    messagingSenderId: "YOUR_SENDER_ID",
+    appId: "YOUR_APP_ID"
+  };
 
-    const app = initializeApp(firebaseConfig);
-    const db = getDatabase(app);
+  const app = initializeApp(firebaseConfig);
+  const db = getDatabase(app);
+  const playlistsRef = ref(db, "playlists");
 
-    const playlistContainer = document.getElementById("playlistContainer");
-    const createPopup = document.getElementById("createPopup");
-    const playlistPopup = document.getElementById("playlistPopup");
-    const popupTitle = document.getElementById("popupTitle");
-    const playlistNameInput = document.getElementById("playlistNameInput");
-    const songList = document.getElementById("songList");
-    const nowPlayingBar = document.getElementById("nowPlayingBar");
-    const nowPlayingSong = document.getElementById("nowPlayingSong");
+  const createBtn = document.getElementById("createPlaylistBtn");
+  const popup = document.getElementById("popup");
+  const cancelBtn = document.getElementById("cancelBtn");
+  const saveBtn = document.getElementById("saveBtn");
+  const playlistNameInput = document.getElementById("playlistName");
 
-    let currentPlaylist = null;
-    let currentIndex = 0;
-    let audio = new Audio();
+  const container = document.getElementById("playlistContainer");
 
-    function openCreatePopup() {
-      createPopup.classList.add("show");
-    }
+  // 📌 Ouvre le popup
+  createBtn.onclick = () => {
+    popup.classList.remove("hidden");
+    popup.classList.add("slide-up");
+  };
 
-    function closeCreatePopup() {
-      createPopup.classList.remove("show");
-    }
+  // 📌 Ferme le popup
+  cancelBtn.onclick = () => {
+    popup.classList.add("hidden");
+    playlistNameInput.value = "";
+  };
 
-    function createPlaylist() {
-      const name = playlistNameInput.value.trim();
-      if (!name) return;
-      const newRef = push(ref(db, "playlists"));
-      set(newRef, { name, songs: [] });
-      closeCreatePopup();
-    }
-
-    function loadPlaylists() {
-      onValue(ref(db, "playlists"), (snapshot) => {
-        playlistContainer.innerHTML = "";
-        snapshot.forEach((child) => {
-          const data = child.val();
-          const div = document.createElement("div");
-          div.className = "playlist";
-          div.textContent = data.name;
-          div.onclick = () => openPlaylistPopup(child.key, data);
-          playlistContainer.appendChild(div);
-        });
+  // ✅ Sauvegarde dans Firebase
+  saveBtn.onclick = () => {
+    const name = playlistNameInput.value.trim();
+    if (name) {
+      const newRef = push(playlistsRef);
+      set(newRef, {
+        name: name,
+        songs: [],
+        createdAt: Date.now()
+      }).then(() => {
+        popup.classList.add("hidden");
+        playlistNameInput.value = "";
       });
     }
+  };
 
-    function openPlaylistPopup(key, data) {
-      popupTitle.textContent = data.name;
-      currentPlaylist = { key, data };
-      currentIndex = 0;
-      songList.innerHTML = "";
-      (data.songs || []).forEach((song, i) => {
-        const li = document.createElement("li");
-        li.textContent = song.title;
-        songList.appendChild(li);
-      });
-      playlistPopup.classList.add("show");
-    }
-
-    function closePlaylistPopup() {
-      playlistPopup.classList.remove("show");
-    }
-
-    function startPlaylist() {
-      if (!currentPlaylist) return;
-      playTrack(currentIndex);
-      nowPlayingBar.style.display = "flex";
-      closePlaylistPopup();
-    }
-
-    function playTrack(index) {
-      const songs = currentPlaylist.data.songs;
-      if (!songs || index >= songs.length) return;
-      const song = songs[index];
-      audio.src = song.url;
-      audio.play();
-      nowPlayingSong.textContent = song.title;
-      currentIndex = index;
-      update(ref(db, `playlists/${currentPlaylist.key}/state`), {
-        currentIndex: index,
-        paused: false,
-        timestamp: 0
-      });
-    }
-
-    function togglePlayPause() {
-      if (audio.paused) {
-        audio.play();
-      } else {
-        audio.pause();
-      }
-    }
-
-    function nextTrack() {
-      playTrack(currentIndex + 1);
-    }
-
-    function previousTrack() {
-      if (currentIndex > 0) playTrack(currentIndex - 1);
-    }
-
-    function restartTrack() {
-      audio.currentTime = 0;
-    }
-
-    audio.addEventListener("ended", () => {
-      nextTrack();
+  // 📥 Charge les playlists
+  onValue(playlistsRef, (snapshot) => {
+    container.innerHTML = ""; // reset
+    snapshot.forEach((child) => {
+      const data = child.val();
+      const div = document.createElement("div");
+      div.className = "playlist-slot";
+      div.innerText = data.name || "Emplacement playlist";
+      div.onclick = () => {
+        // ouvrir popup lecture
+        openPlayerPopup(child.key, data.name);
+      };
+      container.appendChild(div);
     });
+  });
 
-    // Initial load
-    loadPlaylists();
-  </script>
+  // 🎵 Fonction pour ouvrir le lecteur
+  function openPlayerPopup(id, name) {
+    const playerPopup = document.getElementById("playerPopup");
+    const playerTitle = document.getElementById("playlistTitle");
+    playerPopup.classList.remove("hidden");
+    playerPopup.classList.add("slide-up");
+    playerTitle.innerText = name;
+
+    // Charge les chansons et prépare la lecture ici…
+    // (Tu peux intégrer ton ancien code de search.html pour lancer le player)
+  }
+
+  // Fermer lecteur
+  document.getElementById("closePlayer").onclick = () => {
+    document.getElementById("playerPopup").classList.add("hidden");
+  };
+
+  // Allers vers search.html
+  document.getElementById("toSearch").onclick = () => {
+    window.location.href = "search.html";
+  };
+</script>
+
 </body>
 </html>
