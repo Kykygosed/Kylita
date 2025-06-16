@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>KykyBank</title>
+  <link rel="icon" href="/icons/icon-192.png">
+  <meta name="theme-color" content="#000000">
+  <style>    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background-color: white;
+    }
+
+    .topbar {
+      background-color: #8598F8;
+      padding: 15px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .topbar .username {
+      color: white;
+      font-weight: bold;
+      font-size: 18px;
+    }
+
+    .topbar .settings-icon {
+      cursor: pointer;
+      width: 24px;
+      height: 24px;
+    }
+
+    .container {
+      padding: 20px;
+      text-align: center;
+    }
+
+    .solde {
+      font-size: 28px;
+      font-weight: bold;
+      color: black;
+      margin-bottom: 20px;
+    }
+
+    .transaction-button {
+      background-color: #8598F8;
+      color: white;
+      padding: 12px 24px;
+      font-weight: bold;
+      border: 2px solid #8598F8;
+      border-radius: 25px;
+      margin-bottom: 30px;
+      position: relative;
+    }
+
+    .transaction-button::after {
+      content: '';
+      position: absolute;
+      top: -6px;
+      left: -6px;
+      right: -6px;
+      bottom: -6px;
+      border: 2px solid #8598F8;
+      border-radius: 30px;
+      z-index: -1;
+    }
+
+    .notifications {
+      display: flex;
+      overflow-x: auto;
+      gap: 15px;
+      padding-bottom: 20px;
+      scroll-behavior: smooth;
+    }
+
+    .notification-card {
+      min-width: 250px;
+      background-color: white;
+      border-radius: 12px;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+      padding: 15px;
+      flex-shrink: 0;
+      text-align: left;
+    }
+
+    /* Popup */
+    .popup-bg {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background-color: rgba(0,0,0,0.5);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 999;
+    }
+
+    .popup {
+      background-color: white;
+      padding: 30px;
+      border-radius: 12px;
+      width: 90%;
+      max-width: 400px;
+      box-shadow: 0 0 20px rgba(0,0,0,0.3);
+    }
+
+    .popup input {
+      width: 100%;
+      padding: 10px;
+      margin-bottom: 15px;
+      border-radius: 8px;
+      border: 1px solid #ccc;
+    }
+
+    .popup button {
+      padding: 10px 20px;
+      background-color: #8598F8;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    .popup .close-btn {
+      background-color: #ccc;
+      margin-top: 10px;
+    }
+
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <h1>Bienvenue, <span id="pseudo"></span></h1>
+    <p>Votre solde actuel :</p>
+    <div id="solde">0‡</div>
+    <button onclick="openPopup()">Faire un virement</button>
+  </div>
+
+  <div class="popup" id="virementPopup">
+    <h2>Virement</h2>
+    <input type="text" id="destinataire" placeholder="Pseudo du destinataire">
+    <input type="number" id="montant" placeholder="Montant (en ‡)">
+    <div class="popup-buttons">
+      <button onclick="envoyerVirement()">Envoyer</button>
+      <button onclick="closePopup()">Annuler</button>
+    </div>
+
+  
+
+  </div>
+<div id="listeNotifications"></div>
+  <!-- Notification -->
+  <div class="notification" id="notification"></div>
+
+  <!-- Firebase -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
+  <script>
+    const firebaseConfig = {
+  apiKey: "AIzaSyDyWu4TI4PIRXfeb7yqt0WIGClgu10IjkM",
+  authDomain: "kylita-f2923.firebaseapp.com",
+  projectId: "kylita-f2923",
+  storageBucket: "kylita-f2923.appspot.com",
+  messagingSenderId: "431823530994",
+  appId: "1:431823530994:web:88a07e633751686e5ad96b"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+const pseudo = localStorage.getItem("pseudo");
+if (!pseudo) window.location.href = "index.html";
+document.getElementById("pseudo").textContent = pseudo;
+
+const soldeElement = document.getElementById("solde");
+const userRef = db.ref("users/" + pseudo);
+const notificationsRef = db.ref("notifications");
+
+// Initialisation du solde si utilisateur nouveau
+userRef.once("value").then(snapshot => {
+  if (!snapshot.exists()) {
+    userRef.set({ solde: 500 });
+    soldeElement.textContent = "500‡";
+  } else {
+    const solde = snapshot.val().solde || 0;
+    soldeElement.textContent = `${solde}‡`;
+  }
+});
+
+// Fonction pour afficher une notification (format carte) dans la liste à gauche
+function afficherNotificationCard(data) {
+  // Container principal des notifications à gauche (on crée si pas présent)
+  let listeNotif = document.getElementById("listeNotifications");
+  if (!listeNotif) {
+    listeNotif = document.createElement("div");
+    listeNotif.id = "listeNotifications";
+    // Style de la liste notifications sur la gauche, scrollable
+    Object.assign(listeNotif.style, {
+      position: "fixed",
+      top: "10px",
+      left: "10px",
+      width: "320px",
+      maxHeight: "90vh",
+      overflowY: "auto",
+      zIndex: "1000",
+      color: "white",
+      fontFamily: "'Segoe UI', sans-serif",
+    });
+    document.body.appendChild(listeNotif);
+  }
+
+  // Création de la carte notification
+  const card = document.createElement("div");
+  card.style.background = "rgba(0,0,0,0.7)";
+  card.style.borderRadius = "12px";
+  card.style.padding = "15px";
+  card.style.marginBottom = "15px";
+  card.style.boxShadow = "0 2px 8px rgba(0,0,0,0.5)";
+  card.style.display = "flex";
+  card.style.flexDirection = "column";
+  card.style.alignItems = "center";
+
+  // Image en haut de la carte selon le type (virement envoyé ou reçu)
+  const img = document.createElement("img");
+  img.style.width = "80px";
+  img.style.height = "80px";
+  img.style.objectFit = "contain";
+  img.style.marginBottom = "10px";
+
+  // Texte principal
+  const texte = document.createElement("div");
+  texte.style.textAlign = "center";
+  texte.style.fontSize = "1.1em";
+  texte.style.marginBottom = "8px";
+
+  // Texte date et temps en petit
+  const petitTexte = document.createElement("div");
+  petitTexte.style.fontSize = "0.75em";
+  petitTexte.style.color = "#ccc";
+  petitTexte.style.textAlign = "center";
+
+  // Selon type, on met l'image et le texte correspondant
+  if (data.type === "envoi") {
+    img.src = data.imageUrl || "https://cdn-icons-png.flaticon.com/512/190/190411.png"; // ex icon virement envoyé
+    texte.textContent = `Vous avez effectué un virement de ${data.montant}‡ à ${data.destinataire}.`;
+    petitTexte.textContent = `Le ${new Date(data.date).toLocaleString()} - Durée : ${data.duree}s`;
+  } else if (data.type === "reception") {
+    img.src = data.imageUrl || "https://cdn-icons-png.flaticon.com/512/190/190406.png"; // ex icon virement reçu
+    texte.textContent = `Vous avez reçu un virement de ${data.montant}‡ de la part de ${data.emetteur} !!`;
+    petitTexte.textContent = `Le ${new Date(data.date).toLocaleString()}`;
+  } else {
+    // Notification générique simple texte si besoin
+    texte.textContent = data.message || "Notification inconnue";
+    petitTexte.textContent = "";
+  }
+
+  card.appendChild(img);
+  card.appendChild(texte);
+  card.appendChild(petitTexte);
+  listeNotif.appendChild(card);
+}
+
+// Charger toutes les notifications Firebase au chargement et les afficher
+notificationsRef.once("value").then(snapshot => {
+  snapshot.forEach(child => {
+    afficherNotificationCard(child.val());
+  });
+});
+
+// Gestion popup virement
+function openPopup() {
+  document.getElementById("virementPopup").classList.add("active");
+}
+
+function closePopup() {
+  document.getElementById("virementPopup").classList.remove("active");
+}
+
+// Envoyer un virement
+function envoyerVirement() {
+  const destinataire = document.getElementById("destinataire").value.trim();
+  const montant = parseInt(document.getElementById("montant").value);
+
+  if (!destinataire || isNaN(montant) || montant <= 0) {
+    alert("Champs invalides !");
+    return;
+  }
+
+  if (destinataire === pseudo) {
+    alert("Impossible de vous envoyer de l'argent à vous-même !");
+    return;
+  }
+
+  userRef.once("value").then(snapshot => {
+    const soldeActuel = snapshot.val().solde || 0;
+    if (soldeActuel < montant) {
+      alert("Solde insuffisant !");
+      return;
+    }
+
+    const destRef = db.ref("users/" + destinataire);
+    destRef.once("value").then(destSnap => {
+      if (!destSnap.exists()) {
+        alert("Destinataire introuvable.");
+        return;
+      }
+
+      // Calcul de la durée du virement (simulation)
+      const startTime = Date.now();
+
+      // Mise à jour du solde
+      userRef.update({ solde: soldeActuel - montant });
+      destRef.update({ solde: (destSnap.val().solde || 0) + montant }).then(() => {
+        const endTime = Date.now();
+        const duree = ((endTime - startTime) / 1000).toFixed(2);
+
+        soldeElement.textContent = `${soldeActuel - montant}‡`;
+
+        // Créer notification de virement envoyé
+        const notifEnvoi = {
+          type: "envoi",
+          montant: montant,
+          destinataire: destinataire,
+          date: endTime,
+          duree: duree,
+          imageUrl: "https://cdn-icons-png.flaticon.com/512/190/190411.png" // icône virement envoyé
+        };
+        notificationsRef.push(notifEnvoi);
+        afficherNotificationCard(notifEnvoi);
+
+        // Créer notification de virement reçu pour destinataire
+        const notifReception = {
+          type: "reception",
+          montant: montant,
+          emetteur: pseudo,
+          date: endTime,
+          imageUrl: "https://cdn-icons-png.flaticon.com/512/190/190406.png" // icône virement reçu
+        };
+        db.ref("notifications").push(notifReception);
+
+        alert("Virement effectué !");
+        closePopup();
+      });
+    });
+  });
+}
+
+  </script>
+
+</body>
+</html>
