@@ -122,21 +122,44 @@ button:hover {
   width: 100%;
 }
 
-/* Notification */
-.notification {
+/* Notification */.notification {
   position: fixed;
   top: 20px;
   right: 20px;
-  background: #43a047;
+  background: #00c853;
   color: white;
-  padding: 15px 25px;
-  border-radius: 10px;
-  box-shadow: 0 6px 18px rgba(0,0,0,0.4);
+  padding: 12px 20px;
+  border-radius: 25px;
+  font-size: 1em;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
   z-index: 9999;
   opacity: 0;
   transform: translateY(-20px);
   transition: all 0.4s ease;
+  max-width: 250px;
+  word-wrap: break-word;
+  position: fixed;
 }
+
+/* triangle (la petite flèche de la bulle) */
+.notification::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  right: -10px;
+  transform: translateY(-50%);
+  width: 0;
+  height: 0;
+  border-left: 10px solid #00c853;
+  border-top: 8px solid transparent;
+  border-bottom: 8px solid transparent;
+}
+
+.notification.show {
+  opacity: 1;
+  transform: translateY(0);
+}
+
 
 .notification.show {
   opacity: 1;
