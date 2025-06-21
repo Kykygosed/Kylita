@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Push-to-Talk Radio</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      text-align: center;
+      background: #121212;
+      color: #eee;
+      margin-top: 100px;
+    }
+
+    #ptt {
+      font-size: 24px;
+      padding: 20px 40px;
+      background-color: #333;
+      color: #0f0;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      outline: none;
+    }
+
+    #ptt.talking {
+      background-color: #f00;
+      color: #fff;
+    }
+
+    audio {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <h1>📻 Push-to-Talk Radio</h1>
+  <button id="ptt">Appuyer pour parler</button>
+
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
+  <script>
+    // 🔧 Remplace par ta config Firebase
+    const firebaseConfig = {
+      apiKey: "YOUR_API_KEY",
+      authDomain: "YOUR_AUTH_DOMAIN",
+      databaseURL: "YOUR_DATABASE_URL",
+      projectId: "YOUR_PROJECT_ID",
+      storageBucket: "YOUR_STORAGE_BUCKET",
+      messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+      appId: "YOUR_APP_ID"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    const ptt = document.getElementById('ptt');
+    const userId = 'user_' + Math.random().toString(36).substr(2, 9);
+    const talkRef = db.ref('currentlyTalking');
+
+    let localStream;
+    let audio = new Audio();
+    audio.autoplay = true;
+
+    // 🎙️ Prépare l'effet radio (filtre + bruit)
+    function applyRadioEffect(stream) {
+      const context = new AudioContext();
+      const source = context.createMediaStreamSource(stream);
+      const biquadFilter = context.createBiquadFilter();
+      biquadFilter.type = "bandpass";
+      biquadFilter.frequency.value = 1000;
+
+      const noise = context.createBufferSource();
+      const buffer = context.createBuffer(1, context.sampleRate * 1, context.sampleRate);
+      const output = buffer.getChannelData(0);
+      for (let i = 0; i < buffer.length; i++) {
+        output[i] = (Math.random() * 2 - 1) * 0.05;
+      }
+      noise.buffer = buffer;
+      noise.loop = true;
+
+      const noiseGain = context.createGain();
+      noiseGain.gain.value = 0.02;
+      noise.connect(noiseGain).connect(context.destination);
+      noise.start();
+
+      source.connect(biquadFilter).connect(context.destination);
+    }
+
+    // 📡 Start local stream
+    async function getAudioStream() {
+      if (!localStream) {
+        localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        applyRadioEffect(localStream);
+      }
+      return localStream;
+    }
+
+    // 🎤 Prise de parole
+    ptt.addEventListener('mousedown', async () => {
+      const snap = await talkRef.get();
+      if (snap.exists() && snap.val() !== userId) {
+        alert("Quelqu'un parle déjà !");
+        return;
+      }
+
+      talkRef.set(userId);
+
+      const stream = await getAudioStream();
+      const pc = new RTCPeerConnection();
+      stream.getTracks().forEach(track => pc.addTrack(track, stream));
+
+      pc.onicecandidate = e => {
+        if (e.candidate) {
+          db.ref('iceCandidates/' + userId).push(e.candidate.toJSON());
+        }
+      };
+
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      db.ref('offers/' + userId).set(offer);
+
+      ptt.classList.add("talking");
+
+      talkRef.onDisconnect().remove();
+    });
+
+    ptt.addEventListener('mouseup', async () => {
+      await talkRef.remove();
+      ptt.classList.remove("talking");
+    });
+
+    // 🎧 Écoute des offres
+    db.ref('offers').on('child_added', async snap => {
+      const speakerId = snap.key;
+      if (speakerId === userId) return;
+
+      const pc = new RTCPeerConnection();
+      pc.ontrack = e => {
+        audio.srcObject = e.streams[0];
+      };
+
+      pc.onicecandidate = e => {
+        if (e.candidate) {
+          db.ref('iceCandidates/' + userId).push(e.candidate.toJSON());
+        }
+      };
+
+      await pc.setRemoteDescription(new RTCSessionDescription(snap.val()));
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      db.ref('answers/' + userId).set(answer);
+
+      db.ref('iceCandidates/' + speakerId).on('child_added', csnap => {
+        pc.addIceCandidate(new RTCIceCandidate(csnap.val()));
+      });
+    });
+
+    // 📡 Réception des réponses
+    db.ref('answers/' + userId).on('value', async snap => {
+      if (!snap.exists()) return;
+      const answer = snap.val();
+      const pc = new RTCPeerConnection();
+      await pc.setRemoteDescription(new RTCSessionDescription(answer));
+
+      db.ref('iceCandidates/' + userId).on('child_added', csnap => {
+        pc.addIceCandidate(new RTCIceCandidate(csnap.val()));
+      });
+    });
+
+  </script>
+</body>
+</html>
