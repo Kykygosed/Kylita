@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Radio Minecraft</title>
+    <style>
+        body { background: #555; color: orange; font-family: Arial, sans-serif; text-align: center; }
+        #display { background: black; color: orange; font-size: 60px; padding: 10px; margin: 20px auto; width: 300px; border-radius: 10px; }
+        #freq-list { background: #6cf; color: orange; padding: 10px; text-align: left; position: absolute; top: 10px; left: 10px; width: 200px; border-radius: 5px; }
+        #keypad button { font-size: 30px; margin: 5px; padding: 10px 20px; }
+        #ptt { background: red; color: darkred; font-size: 25px; padding: 20px; border-radius: 50%; margin: 20px; cursor: pointer; }
+        #ptt.active { background: green; color: white; }
+        #ptt.disabled { background: grey; color: darkred; cursor: not-allowed; }
+        #device-select { margin: 10px; }
+        #users { color: white; margin-top: 20px; }
+    </style>
+</head>
+<body>
+
+<div id="freq-list">
+    <b>Liste des fréquences importantes:</b><br>
+    153.890 - KLTA_TOWER<br>
+    153.750 - KLTA_ATIS<br>
+    153.310 - UNICOM
+</div>
+
+<div id="display">123.450</div>
+
+<select id="device-select"></select>
+
+<div id="keypad">
+    <button>1</button><button>2</button><button>3</button><button>4</button><button>5</button><br>
+    <button>6</button><button>7</button><button>8</button><button>9</button><button>0</button>
+    <button>.</button>
+    <button id="go">GO</button>
+</div>
+
+<button id="ptt" class="disabled">PTT</button>
+
+<div id="users">Connectés: <span id="user-list"></span></div>
+
+<audio id="noise" src="noise.mp3"></audio>
+
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
+
+<script>
+const firebaseConfig = {
+    apiKey: "",
+    authDomain: "",
+    projectId: "",
+    storageBucket: "",
+    messagingSenderId: "",
+    appId: "",
+    databaseURL: ""
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+let localStream;
+let peerConnections = {};
+let currentFreq = "123.450";
+let isTalking = false;
+let userId = "user_" + Math.floor(Math.random() * 10000);
+
+const display = document.getElementById("display");
+const ptt = document.getElementById("ptt");
+const keypad = document.getElementById("keypad");
+const go = document.getElementById("go");
+const deviceSelect = document.getElementById("device-select");
+const noise = document.getElementById("noise");
+const userList = document.getElementById("user-list");
+
+navigator.mediaDevices.enumerateDevices().then(devices => {
+    devices.filter(d => d.kind === 'audioinput').forEach(d => {
+        let opt = document.createElement("option");
+        opt.value = d.deviceId;
+        opt.textContent = d.label || "Micro ";
+        deviceSelect.appendChild(opt);
+    });
+});
+
+let freqInput = "";
+keypad.addEventListener('click', e => {
+    if (e.target.tagName === 'BUTTON' && e.target.textContent !== "GO") {
+        freqInput += e.target.textContent;
+        display.textContent = freqInput;
+    }
+});
+go.onclick = () => {
+    if (freqInput.length > 0) {
+        leaveFreq(currentFreq);
+        currentFreq = freqInput;
+        joinFreq(currentFreq);
+        display.textContent = currentFreq;
+        freqInput = "";
+    }
+};
+
+ptt.onmousedown = startTalk;
+ptt.ontouchstart = startTalk;
+ptt.onmouseup = stopTalk;
+ptt.ontouchend = stopTalk;
+
+function startTalk() {
+    db.ref(`freq/${currentFreq}/talking`).once('value', snap => {
+        if (!snap.val()) {
+            db.ref(`freq/${currentFreq}/talking`).set(userId);
+            ptt.classList.add("active");
+            isTalking = true;
+            startStream().then(() => {
+                for (let peerId in peerConnections) {
+                    const pc = peerConnections[peerId];
+                    localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+                }
+            });
+        }
+    });
+}
+
+function stopTalk() {
+    if (isTalking) {
+        db.ref(`freq/${currentFreq}/talking`).set("");
+        ptt.classList.remove("active");
+        stopStream();
+        noise.play();
+        isTalking = false;
+    }
+}
+
+function joinFreq(freq) {
+    db.ref(`freq/${freq}/talking`).on('value', snap => {
+        const speaker = snap.val();
+        if (speaker && speaker !== userId) {
+            ptt.classList.add("disabled");
+        } else {
+            ptt.classList.remove("disabled");
+        }
+    });
+
+    db.ref(`freq/${freq}/users/${userId}`).set(true);
+    db.ref(`freq/${freq}/users/${userId}`).onDisconnect().remove();
+    db.ref(`freq/${freq}/users`).on('value', snap => {
+        const users = Object.keys(snap.val() || {});
+        userList.textContent = users.join(", ");
+        users.forEach(uid => {
+            if (uid !== userId && !peerConnections[uid]) {
+                createPeerConnection(uid);
+            }
+        });
+    });
+}
+
+function leaveFreq(freq) {
+    db.ref(`freq/${freq}/talking`).off();
+    db.ref(`freq/${freq}/users/${userId}`).remove();
+    db.ref(`freq/${freq}/users`).off();
+    for (let uid in peerConnections) {
+        peerConnections[uid].close();
+        delete peerConnections[uid];
+    }
+}
+
+async function startStream() {
+    localStream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: deviceSelect.value } });
+}
+
+function stopStream() {
+    if (localStream) {
+        localStream.getTracks().forEach(t => t.stop());
+    }
+}
+
+function createPeerConnection(peerId) {
+    const pc = new RTCPeerConnection();
+    peerConnections[peerId] = pc;
+
+    pc.ontrack = (e) => {
+        const audio = new Audio();
+        audio.srcObject = e.streams[0];
+        audio.play();
+    };
+
+    pc.onicecandidate = (e) => {
+        if (e.candidate) {
+            db.ref(`signals/${currentFreq}/${peerId}/candidates/${userId}`).push(JSON.stringify(e.candidate));
+        }
+    };
+
+    db.ref(`signals/${currentFreq}/${userId}/offer`).on('value', async snap => {
+        const data = snap.val();
+        if (data && !pc.currentRemoteDescription) {
+            await pc.setRemoteDescription(new RTCSessionDescription(JSON.parse(data)));
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+            db.ref(`signals/${currentFreq}/${userId}/answer`).set(JSON.stringify(answer));
+        }
+    });
+
+    db.ref(`signals/${currentFreq}/${userId}/candidates/${peerId}`).on('child_added', snap => {
+        pc.addIceCandidate(new RTCIceCandidate(JSON.parse(snap.val())));
+    });
+
+    pc.createOffer().then(offer => {
+        pc.setLocalDescription(offer);
+        db.ref(`signals/${currentFreq}/${peerId}/offer`).set(JSON.stringify(offer));
+    });
+
+    db.ref(`signals/${currentFreq}/${peerId}/answer`).on('value', async snap => {
+        const data = snap.val();
+        if (data && !pc.currentRemoteDescription) {
+            await pc.setRemoteDescription(new RTCSessionDescription(JSON.parse(data)));
+        }
+    });
+
+    db.ref(`signals/${currentFreq}/${peerId}/candidates/${userId}`).on('child_added', snap => {
+        pc.addIceCandidate(new RTCIceCandidate(JSON.parse(snap.val())));
+    });
+}
+
+joinFreq(currentFreq);
+</script>
+</body>
+</html>
