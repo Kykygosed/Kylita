@@ -12,7 +12,6 @@
         #ptt.active { background: green; color: white; }
         #ptt.disabled { background: grey; color: darkred; cursor: not-allowed; }
         #device-select { margin: 10px; }
-        #users { color: white; margin-top: 20px; }
     </style>
 </head>
 <body>
@@ -37,8 +36,6 @@
 
 <button id="ptt" class="disabled">PTT</button>
 
-<div id="users">Connectés: <span id="user-list"></span></div>
-
 <audio id="noise" src="noise.mp3"></audio>
 
 <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
@@ -50,7 +47,7 @@ const firebaseConfig = {
   apiKey: "AIzaSyDyWu4TI4PIRXfeb7yqt0WIGClgu10IjkM",
   authDomain: "kylita-f2923.firebaseapp.com",
   projectId: "kylita-f2923",
-  storageBucket: "kylita-f2923.firebasestorage.app",
+  storageBucket: "kylita-f2923.appspot.com",
   messagingSenderId: "431823530994",
   appId: "1:431823530994:web:88a07e633751686e5ad96b",
   measurementId: "G-F4LLNWQJ16"
@@ -70,13 +67,12 @@ const keypad = document.getElementById("keypad");
 const go = document.getElementById("go");
 const deviceSelect = document.getElementById("device-select");
 const noise = document.getElementById("noise");
-const userList = document.getElementById("user-list");
 
 navigator.mediaDevices.enumerateDevices().then(devices => {
     devices.filter(d => d.kind === 'audioinput').forEach(d => {
         let opt = document.createElement("option");
         opt.value = d.deviceId;
-        opt.textContent = d.label || "Micro ";
+        opt.textContent = d.label || "Micro";
         deviceSelect.appendChild(opt);
     });
 });
@@ -98,23 +94,26 @@ go.onclick = () => {
     }
 };
 
-ptt.onmousedown = startTalk;
-ptt.ontouchstart = startTalk;
-ptt.onmouseup = stopTalk;
-ptt.ontouchend = stopTalk;
+ptt.onclick = () => {
+    if (isTalking) {
+        stopTalk();
+    } else {
+        db.ref(`freq/${currentFreq}/talking`).once('value', snap => {
+            if (!snap.val()) {
+                startTalk();
+            }
+        });
+    }
+};
 
 function startTalk() {
-    db.ref(`freq/${currentFreq}/talking`).once('value', snap => {
-        if (!snap.val()) {
-            db.ref(`freq/${currentFreq}/talking`).set(userId);
-            ptt.classList.add("active");
-            isTalking = true;
-            startStream().then(() => {
-                for (let peerId in peerConnections) {
-                    const pc = peerConnections[peerId];
-                    localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
-                }
-            });
+    db.ref(`freq/${currentFreq}/talking`).set(userId);
+    ptt.classList.add("active");
+    isTalking = true;
+    startStream().then(() => {
+        for (let peerId in peerConnections) {
+            const pc = peerConnections[peerId];
+            localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
         }
     });
 }
@@ -135,15 +134,15 @@ function joinFreq(freq) {
         if (speaker && speaker !== userId) {
             ptt.classList.add("disabled");
         } else {
-            ptt.classList.remove("disabled");
+            if (!isTalking) ptt.classList.remove("disabled");
         }
     });
 
     db.ref(`freq/${freq}/users/${userId}`).set(true);
     db.ref(`freq/${freq}/users/${userId}`).onDisconnect().remove();
+
     db.ref(`freq/${freq}/users`).on('value', snap => {
         const users = Object.keys(snap.val() || {});
-        userList.textContent = users.join(", ");
         users.forEach(uid => {
             if (uid !== userId && !peerConnections[uid]) {
                 createPeerConnection(uid);
@@ -164,6 +163,10 @@ function leaveFreq(freq) {
 
 async function startStream() {
     localStream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: deviceSelect.value } });
+    // On s'entend soi-même
+    const audio = new Audio();
+    audio.srcObject = localStream;
+    audio.play();
 }
 
 function stopStream() {
