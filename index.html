@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Jeu 3D VR Mobile - Autorisation</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; }
+        #startBtn {
+            position: absolute; top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            padding: 20px 40px;
+            font-size: 20px;
+            z-index: 2;
+        }
+        #joystick { position: absolute; bottom: 20px; left: 20px; width: 100px; height: 100px; display: none; }
+        #jumpBtn { position: absolute; bottom: 40px; right: 20px; padding: 15px; font-size: 16px; display: none; }
+    </style>
+</head>
+<body>
+    <button id="startBtn">Démarrer le Jeu</button>
+    <div id="joystick"></div>
+    <button id="jumpBtn">SAUTER</button>
+
+    <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js/loaders/GLTFLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/nipplejs@0.9.0/dist/nipplejs.min.js"></script>
+
+    <script>
+    let scene, camera, renderer, player, velocityY = 0, canJump = false;
+    const gravity = -0.01;
+    let moveX = 0, moveZ = 0;
+
+    const startBtn = document.getElementById('startBtn');
+    const jumpBtn = document.getElementById('jumpBtn');
+    const joystickZone = document.getElementById('joystick');
+
+    startBtn.addEventListener('click', async () => {
+        // Demander l'autorisation du gyroscope si nécessaire
+        if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+            try {
+                const response = await DeviceOrientationEvent.requestPermission();
+                if (response !== 'granted') {
+                    alert('Autorisation refusée. Le jeu ne fonctionnera pas correctement.');
+                    return;
+                }
+            } catch (e) {
+                console.error(e);
+                alert('Erreur lors de la demande d\'autorisation.');
+                return;
+            }
+        }
+
+        startBtn.style.display = 'none';
+        jumpBtn.style.display = 'block';
+        joystickZone.style.display = 'block';
+
+        initGame();
+    });
+
+    function initGame() {
+        scene = new THREE.Scene();
+        camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+        renderer = new THREE.WebGLRenderer({antialias: true});
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        const light = new THREE.DirectionalLight(0xffffff, 1);
+        light.position.set(10, 10, 10);
+        scene.add(light);
+
+        player = new THREE.Object3D();
+        player.position.set(0, 1, 0);
+        scene.add(player);
+        camera.position.set(0, 1.5, 0);
+        player.add(camera);
+
+        const loader = new THREE.GLTFLoader();
+        loader.load('map.glb', function (gltf) {
+            scene.add(gltf.scene);
+        }, undefined, function (error) {
+            console.error(error);
+        });
+
+        // Joystick
+        const joystick = nipplejs.create({
+            zone: joystickZone,
+            mode: 'static',
+            position: {left: '50%', top: '50%'},
+            color: 'blue'
+        });
+
+        joystick.on('move', (evt, data) => {
+            const angle = data.angle.degree;
+            const distance = data.distance / 50;
+            moveX = Math.sin(angle * Math.PI / 180) * distance;
+            moveZ = Math.cos(angle * Math.PI / 180) * distance * -1;
+        });
+        joystick.on('end', () => {
+            moveX = 0;
+            moveZ = 0;
+        });
+
+        // Gyroscope
+        window.addEventListener('deviceorientation', (event) => {
+            const rotY = event.alpha || 0;
+            const rotX = event.beta || 0;
+            player.rotation.y = THREE.MathUtils.degToRad(rotY);
+            camera.rotation.x = THREE.MathUtils.degToRad(rotX - 90);
+        });
+
+        // Saut
+        jumpBtn.addEventListener('click', () => {
+            if (canJump) {
+                velocityY = 0.1;
+                canJump = false;
+            }
+        });
+
+        animate();
+    }
+
+    function animate() {
+        requestAnimationFrame(animate);
+
+        player.position.x += moveX * 0.1;
+        player.position.z += moveZ * 0.1;
+
+        player.position.y += velocityY;
+        velocityY += gravity;
+
+        if (player.position.y <= 1) {
+            player.position.y = 1;
+            velocityY = 0;
+            canJump = true;
+        }
+
+        renderer.render(scene, camera);
+    }
+
+    window.addEventListener('resize', () => {
+        if (!camera) return;
+        camera.aspect = window.innerWidth/window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+    </script>
+</body>
+</html>
